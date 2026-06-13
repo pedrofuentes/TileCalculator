@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import type { Computed } from '../compute';
 import type { Unit } from '../types';
 import { formatArea, formatLength, fromInches, roundDisplay, UNIT_LABELS } from '../units';
@@ -14,7 +14,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-export function ResultsPanel({ computed, unit }: { computed: Computed; unit: Unit }) {
+export const ResultsPanel = memo(function ResultsPanel({ computed, unit }: { computed: Computed; unit: Unit }) {
   const { tiles, borders } = computed;
 
   const cutList = useMemo(() => {
@@ -165,4 +165,4 @@ export function ResultsPanel({ computed, unit }: { computed: Computed; unit: Uni
       </Section>
     </div>
   );
-}
+});

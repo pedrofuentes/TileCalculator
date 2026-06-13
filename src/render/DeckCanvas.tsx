@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { Computed } from '../compute';
-import type { Project } from '../types';
+import type { Project, Unit } from '../types';
 import type { MultiPoly, Pt } from '../geometry/polygon';
 import type { Side } from '../geometry/sides';
 import { fromInches, roundDisplay, UNIT_LABELS } from '../units';
@@ -30,7 +30,285 @@ type Brush =
 
 const CUT_SIDE_COLOR = '#db2777';
 
-export function DeckCanvas({
+type ToScreen = (p: Pt) => Pt;
+type Cells = Computed['grid']['cells'];
+type Sides = Computed['shape']['sides'];
+type Corners = Computed['shape']['corners'];
+type PostShapes = Computed['posts']['shapes'];
+type AssignMap = Map<string, string | null>;
+type BorderTypeMap = Map<string, Project['borderTypes'][number]>;
+type SideMap = Map<string, Side>;
+
+function makeFmt(unit: Unit) {
+  return (lenInches: number) =>
+    `${roundDisplay(fromInches(lenInches, unit), 2)} ${UNIT_LABELS[unit]}`;
+}
+
+// --- Static, geometry-derived layers (memoized so hover never re-renders them) ---
+
+const TileLayer = memo(function TileLayer({
+  cells,
+  toScreen,
+  scale,
+  tile,
+  showGrid,
+  unit,
+}: {
+  cells: Cells;
+  toScreen: ToScreen;
+  scale: number;
+  tile: Project['tile'];
+  showGrid: boolean;
+  unit: Unit;
+}) {
+  const nodes = useMemo(() => {
+    if (!showGrid) return null;
+    const fmt = makeFmt(unit);
+    const w = tile.width * scale;
+    const h = tile.height * scale;
+    return cells.map((cell) => {
+      const [sx, sy] = toScreen([cell.x, cell.y]);
+      const key = `${cell.x},${cell.y}`;
+      if (cell.kind === 'full') {
+        return (
+          <rect
+            key={key}
+            x={sx}
+            y={sy}
+            width={w}
+            height={h}
+            fill={FULL_FILL}
+            stroke={FULL_STROKE}
+            strokeWidth={1}
+          >
+            <title>{`Full tile (${fmt(tile.width)} \u00d7 ${fmt(tile.height)})`}</title>
+          </rect>
+        );
+      }
+      const covered = multiPolyToPath(cell.covered, toScreen);
+      const cw = cell.cutBBox.maxX - cell.cutBBox.minX;
+      const ch = cell.cutBBox.maxY - cell.cutBBox.minY;
+      return (
+        <g key={key}>
+          {/* original tile footprint (shows offcut) */}
+          <rect
+            x={sx}
+            y={sy}
+            width={w}
+            height={h}
+            fill="none"
+            stroke="#cbd5e1"
+            strokeWidth={0.75}
+            strokeDasharray="3 3"
+          />
+          <path d={covered} fill={CUT_FILL} stroke={CUT_STROKE} strokeWidth={1} fillRule="evenodd">
+            <title>{`Cut tile \u2192 piece ${fmt(cw)} \u00d7 ${fmt(ch)}${
+              cell.rectangular ? '' : ' (L-cut)'
+            }`}</title>
+          </path>
+        </g>
+      );
+    });
+  }, [cells, toScreen, scale, tile, showGrid, unit]);
+  return <>{nodes}</>;
+});
+
+const BordersLayer = memo(function BordersLayer({
+  sides,
+  assignMap,
+  borderTypeMap,
+  inset,
+  toScreen,
+  showBorders,
+  unit,
+}: {
+  sides: Sides;
+  assignMap: AssignMap;
+  borderTypeMap: BorderTypeMap;
+  inset: boolean;
+  toScreen: ToScreen;
+  showBorders: boolean;
+  unit: Unit;
+}) {
+  const nodes = useMemo(() => {
+    if (!showBorders) return null;
+    const fmt = makeFmt(unit);
+    return sides.map((side) => {
+      const typeId = assignMap.get(side.id);
+      if (!typeId) return null;
+      const t = borderTypeMap.get(typeId);
+      if (!t) return null;
+      const a = side.a;
+      const b = side.b;
+      const o = side.outward;
+      const f = t.faceWidth;
+      const dir = inset ? -1 : 1; // inset trim sits inward
+      const p1 = toScreen(a);
+      const p2 = toScreen(b);
+      const p3 = toScreen([b[0] + o[0] * f * dir, b[1] + o[1] * f * dir]);
+      const p4 = toScreen([a[0] + o[0] * f * dir, a[1] + o[1] * f * dir]);
+      return (
+        <polygon
+          key={`b-${side.id}`}
+          points={`${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${p3[0]},${p3[1]} ${p4[0]},${p4[1]}`}
+          fill={t.color}
+          fillOpacity={0.85}
+          stroke={t.color}
+          strokeWidth={1}
+        >
+          <title>{`${t.name} \u2014 ${fmt(side.length)}`}</title>
+        </polygon>
+      );
+    });
+  }, [sides, assignMap, borderTypeMap, inset, toScreen, showBorders, unit]);
+  return <>{nodes}</>;
+});
+
+const CornersLayer = memo(function CornersLayer({
+  corners,
+  assignMap,
+  sideMap,
+  borderTypeMap,
+  inset,
+  toScreen,
+  showBorders,
+}: {
+  corners: Corners;
+  assignMap: AssignMap;
+  sideMap: SideMap;
+  borderTypeMap: BorderTypeMap;
+  inset: boolean;
+  toScreen: ToScreen;
+  showBorders: boolean;
+}) {
+  const nodes = useMemo(() => {
+    if (!showBorders) return null;
+    return corners.map((corner, i) => {
+      const prev = assignMap.get(corner.prevSideId);
+      const next = assignMap.get(corner.nextSideId);
+      if (!prev || !next) return null;
+      const ps = sideMap.get(corner.prevSideId);
+      const ns = sideMap.get(corner.nextSideId);
+      if (!ps || !ns) return null;
+      let ox = ps.outward[0] + ns.outward[0];
+      let oy = ps.outward[1] + ns.outward[1];
+      const m = Math.hypot(ox, oy) || 1;
+      ox /= m;
+      oy /= m;
+      const face = borderTypeMap.get(prev)?.faceWidth ?? 1.5;
+      const dir = inset ? -1 : 1;
+      const [cx, cy] = toScreen([
+        corner.point[0] + ox * face * 0.7 * dir,
+        corner.point[1] + oy * face * 0.7 * dir,
+      ]);
+      const color = prev === next ? borderTypeMap.get(prev)?.color ?? '#334155' : '#7c3aed';
+      const r = 4;
+      return corner.type === 'outside' ? (
+        <rect key={`c-${i}`} x={cx - r} y={cy - r} width={r * 2} height={r * 2} fill={color}>
+          <title>{`Outside corner${prev !== next ? ' (mixed)' : ''}`}</title>
+        </rect>
+      ) : (
+        <circle key={`c-${i}`} cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={2}>
+          <title>Inside corner</title>
+        </circle>
+      );
+    });
+  }, [corners, assignMap, sideMap, borderTypeMap, inset, toScreen, showBorders]);
+  return <>{nodes}</>;
+});
+
+const LabelsLayer = memo(function LabelsLayer({
+  sides,
+  assignMap,
+  borderTypeMap,
+  inset,
+  toScreen,
+  showLabels,
+  unit,
+}: {
+  sides: Sides;
+  assignMap: AssignMap;
+  borderTypeMap: BorderTypeMap;
+  inset: boolean;
+  toScreen: ToScreen;
+  showLabels: boolean;
+  unit: Unit;
+}) {
+  const nodes = useMemo(() => {
+    if (!showLabels) return null;
+    const fmt = makeFmt(unit);
+    return sides.map((side) => {
+      const assigned = assignMap.get(side.id);
+      const t = assigned ? borderTypeMap.get(assigned) : null;
+      const face = t?.faceWidth ?? 0;
+      const off = (inset ? 0 : face) + 22;
+      const lx = side.mid[0] + side.outward[0] * off;
+      const ly = side.mid[1] + side.outward[1] * off;
+      const [sx, sy] = toScreen([lx, ly]);
+      const label = fmt(side.length);
+      return (
+        <g key={`l-${side.id}`} style={{ pointerEvents: 'none' }}>
+          <rect
+            x={sx - label.length * 3.4 - 4}
+            y={sy - 9}
+            width={label.length * 6.8 + 8}
+            height={18}
+            rx={3}
+            fill="white"
+            fillOpacity={0.85}
+            stroke="#e2e8f0"
+          />
+          <text x={sx} y={sy + 4} textAnchor="middle" className="fill-slate-700" fontSize={11}>
+            {label}
+          </text>
+        </g>
+      );
+    });
+  }, [sides, assignMap, borderTypeMap, inset, toScreen, showLabels, unit]);
+  return <>{nodes}</>;
+});
+
+const PostsLayer = memo(function PostsLayer({
+  posts,
+  toScreen,
+  unit,
+  onRemovePost,
+}: {
+  posts: PostShapes;
+  toScreen: ToScreen;
+  unit: Unit;
+  onRemovePost?: (id: string) => void;
+}) {
+  const fmt = makeFmt(unit);
+  return (
+    <>
+      {posts.map((ps) => {
+        const pts = ps.ring
+          .map((p) => {
+            const s = toScreen(p);
+            return `${s[0]},${s[1]}`;
+          })
+          .join(' ');
+        return (
+          <polygon
+            key={`post-${ps.post.id}`}
+            points={pts}
+            fill={ps.type.color}
+            fillOpacity={0.9}
+            stroke="#1e293b"
+            strokeWidth={1}
+            style={{ cursor: 'pointer' }}
+            onClick={() => onRemovePost?.(ps.post.id)}
+          >
+            <title>{`${ps.type.name} (${fmt(ps.type.width)} \u00d7 ${fmt(ps.type.depth)}) \u2014 click to remove`}</title>
+          </polygon>
+        );
+      })}
+    </>
+  );
+});
+
+export const DeckCanvas = memo(function DeckCanvas({
   computed,
   project,
   hoveredSideId,
@@ -116,8 +394,7 @@ export function DeckCanvas({
 
   const deckPath = useMemo(() => multiPolyToPath(computed.deck, toScreen), [computed.deck, toScreen]);
 
-  const fmt = (lenInches: number) =>
-    `${roundDisplay(fromInches(lenInches, unit), 2)} ${UNIT_LABELS[unit]}`;
+  const fmt = makeFmt(unit);
 
   return (
     <div className="flex h-full flex-col">
@@ -200,143 +477,47 @@ export function DeckCanvas({
           <path d={deckPath} fill={DECK_FILL} stroke="#94a3b8" strokeWidth={1.5} fillRule="evenodd" />
 
           {/* Tiles */}
-          {showGrid &&
-            computed.grid.cells.map((cell, i) => {
-              const [sx, sy] = toScreen([cell.x, cell.y]);
-              const w = tile.width * scale;
-              const h = tile.height * scale;
-              if (cell.kind === 'full') {
-                return (
-                  <rect
-                    key={i}
-                    x={sx}
-                    y={sy}
-                    width={w}
-                    height={h}
-                    fill={FULL_FILL}
-                    stroke={FULL_STROKE}
-                    strokeWidth={1}
-                  >
-                    <title>{`Full tile (${fmt(tile.width)} \u00d7 ${fmt(tile.height)})`}</title>
-                  </rect>
-                );
-              }
-              const covered = multiPolyToPath(cell.covered, toScreen);
-              const cw = cell.cutBBox.maxX - cell.cutBBox.minX;
-              const ch = cell.cutBBox.maxY - cell.cutBBox.minY;
-              return (
-                <g key={i}>
-                  {/* original tile footprint (shows offcut) */}
-                  <rect
-                    x={sx}
-                    y={sy}
-                    width={w}
-                    height={h}
-                    fill="none"
-                    stroke="#cbd5e1"
-                    strokeWidth={0.75}
-                    strokeDasharray="3 3"
-                  />
-                  <path d={covered} fill={CUT_FILL} stroke={CUT_STROKE} strokeWidth={1} fillRule="evenodd">
-                    <title>{`Cut tile \u2192 piece ${fmt(cw)} \u00d7 ${fmt(ch)}${
-                      cell.rectangular ? '' : ' (L-cut)'
-                    }`}</title>
-                  </path>
-                </g>
-              );
-            })}
+          <TileLayer
+            cells={computed.grid.cells}
+            toScreen={toScreen}
+            scale={scale}
+            tile={tile}
+            showGrid={showGrid}
+            unit={unit}
+          />
 
           {/* Borders */}
-          {showBorders &&
-            computed.shape.sides.map((side) => {
-              const typeId = assignMap.get(side.id);
-              if (!typeId) return null;
-              const t = borderTypeMap.get(typeId);
-              if (!t) return null;
-              const a = side.a;
-              const b = side.b;
-              const o = side.outward;
-              const f = t.faceWidth;
-              const dir = computed.inset ? -1 : 1; // inset trim sits inward
-              const p1 = toScreen(a);
-              const p2 = toScreen(b);
-              const p3 = toScreen([b[0] + o[0] * f * dir, b[1] + o[1] * f * dir]);
-              const p4 = toScreen([a[0] + o[0] * f * dir, a[1] + o[1] * f * dir]);
-              return (
-                <polygon
-                  key={`b-${side.id}`}
-                  points={`${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${p3[0]},${p3[1]} ${p4[0]},${p4[1]}`}
-                  fill={t.color}
-                  fillOpacity={0.85}
-                  stroke={t.color}
-                  strokeWidth={1}
-                >
-                  <title>{`${t.name} \u2014 ${fmt(side.length)}`}</title>
-                </polygon>
-              );
-            })}
+          <BordersLayer
+            sides={computed.shape.sides}
+            assignMap={assignMap}
+            borderTypeMap={borderTypeMap}
+            inset={computed.inset}
+            toScreen={toScreen}
+            showBorders={showBorders}
+            unit={unit}
+          />
 
           {/* Corner markers */}
-          {showBorders &&
-            computed.shape.corners.map((corner, i) => {
-              const prev = assignMap.get(corner.prevSideId);
-              const next = assignMap.get(corner.nextSideId);
-              if (!prev || !next) return null;
-              const ps = sideMap.get(corner.prevSideId);
-              const ns = sideMap.get(corner.nextSideId);
-              if (!ps || !ns) return null;
-              let ox = ps.outward[0] + ns.outward[0];
-              let oy = ps.outward[1] + ns.outward[1];
-              const m = Math.hypot(ox, oy) || 1;
-              ox /= m;
-              oy /= m;
-              const face = borderTypeMap.get(prev)?.faceWidth ?? 1.5;
-              const dir = computed.inset ? -1 : 1;
-              const [cx, cy] = toScreen([
-                corner.point[0] + ox * face * 0.7 * dir,
-                corner.point[1] + oy * face * 0.7 * dir,
-              ]);
-              const color = prev === next ? borderTypeMap.get(prev)?.color ?? '#334155' : '#7c3aed';
-              const r = 4;
-              return corner.type === 'outside' ? (
-                <rect key={`c-${i}`} x={cx - r} y={cy - r} width={r * 2} height={r * 2} fill={color}>
-                  <title>{`Outside corner${prev !== next ? ' (mixed)' : ''}`}</title>
-                </rect>
-              ) : (
-                <circle key={`c-${i}`} cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={2}>
-                  <title>Inside corner</title>
-                </circle>
-              );
-            })}
+          <CornersLayer
+            corners={computed.shape.corners}
+            assignMap={assignMap}
+            sideMap={sideMap}
+            borderTypeMap={borderTypeMap}
+            inset={computed.inset}
+            toScreen={toScreen}
+            showBorders={showBorders}
+          />
 
           {/* Dimension labels per side */}
-          {showLabels &&
-            computed.shape.sides.map((side) => {
-              const t = assignMap.get(side.id) ? borderTypeMap.get(assignMap.get(side.id)!) : null;
-              const face = t?.faceWidth ?? 0;
-              const off = (computed.inset ? 0 : face) + 22;
-              const lx = side.mid[0] + side.outward[0] * off;
-              const ly = side.mid[1] + side.outward[1] * off;
-              const [sx, sy] = toScreen([lx, ly]);
-              const label = fmt(side.length);
-              return (
-                <g key={`l-${side.id}`} style={{ pointerEvents: 'none' }}>
-                  <rect
-                    x={sx - label.length * 3.4 - 4}
-                    y={sy - 9}
-                    width={label.length * 6.8 + 8}
-                    height={18}
-                    rx={3}
-                    fill="white"
-                    fillOpacity={0.85}
-                    stroke="#e2e8f0"
-                  />
-                  <text x={sx} y={sy + 4} textAnchor="middle" className="fill-slate-700" fontSize={11}>
-                    {label}
-                  </text>
-                </g>
-              );
-            })}
+          <LabelsLayer
+            sides={computed.shape.sides}
+            assignMap={assignMap}
+            borderTypeMap={borderTypeMap}
+            inset={computed.inset}
+            toScreen={toScreen}
+            showLabels={showLabels}
+            unit={unit}
+          />
 
           {/* Interactive side hit-targets, hover highlight, and numbered badges */}
           {computed.shape.sides.map((side, i) => {
@@ -421,33 +602,17 @@ export function DeckCanvas({
           })}
 
           {/* Posts (footprints) — rendered on top; click to remove */}
-          {computed.posts.shapes.map((ps) => {
-            const pts = ps.ring
-              .map((p) => {
-                const s = toScreen(p);
-                return `${s[0]},${s[1]}`;
-              })
-              .join(' ');
-            return (
-              <polygon
-                key={`post-${ps.post.id}`}
-                points={pts}
-                fill={ps.type.color}
-                fillOpacity={0.9}
-                stroke="#1e293b"
-                strokeWidth={1}
-                style={{ cursor: 'pointer' }}
-                onClick={() => onRemovePost?.(ps.post.id)}
-              >
-                <title>{`${ps.type.name} (${fmt(ps.type.width)} \u00d7 ${fmt(ps.type.depth)}) \u2014 click to remove`}</title>
-              </polygon>
-            );
-          })}
+          <PostsLayer
+            posts={computed.posts.shapes}
+            toScreen={toScreen}
+            unit={unit}
+            onRemovePost={onRemovePost}
+          />
         </svg>
       </div>
     </div>
   );
-}
+});
 
 function projectOntoSide(side: Side, world: Pt): number {
   const len = side.length;

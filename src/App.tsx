@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Project } from './types';
 import { computeProject } from './compute';
 import { makeDefaultProject, uid } from './state/defaults';
@@ -22,46 +22,90 @@ export default function App() {
   const [hoveredSideId, setHoveredSideId] = useState<string | null>(null);
   const computed = useMemo(() => computeProject(project), [project]);
 
-  const patch = (p: Partial<Project>) => setProject((prev) => ({ ...prev, ...p }));
+  const patch = useCallback(
+    (p: Partial<Project>) => setProject((prev) => ({ ...prev, ...p })),
+    [],
+  );
 
-  const assignSide = (sideId: string, borderTypeId: string | null) =>
-    setProject((prev) => ({
-      ...prev,
-      sideAssignments: [
-        ...prev.sideAssignments.filter((a) => a.sideId !== sideId),
-        { sideId, borderTypeId },
-      ],
-    }));
+  const assignSide = useCallback(
+    (sideId: string, borderTypeId: string | null) =>
+      setProject((prev) => ({
+        ...prev,
+        sideAssignments: [
+          ...prev.sideAssignments.filter((a) => a.sideId !== sideId),
+          { sideId, borderTypeId },
+        ],
+      })),
+    [],
+  );
 
-  const toggleCutSide = (sideId: string) =>
-    setProject((prev) => {
-      const current = prev.grid.cutSides ?? [];
-      const cutSides = current.includes(sideId)
-        ? current.filter((id) => id !== sideId)
-        : [...current, sideId];
-      return { ...prev, grid: { ...prev.grid, cutSides } };
-    });
+  const toggleCutSide = useCallback(
+    (sideId: string) =>
+      setProject((prev) => {
+        const current = prev.grid.cutSides ?? [];
+        const cutSides = current.includes(sideId)
+          ? current.filter((id) => id !== sideId)
+          : [...current, sideId];
+        return { ...prev, grid: { ...prev.grid, cutSides } };
+      }),
+    [],
+  );
 
-  const addPost = (sideId: string, pos: number, postTypeId: string) =>
-    setProject((prev) => ({
-      ...prev,
-      posts: [
-        ...(prev.posts ?? []),
-        { id: uid('post'), postTypeId, sideId, pos },
-      ],
-    }));
+  const addPost = useCallback(
+    (sideId: string, pos: number, postTypeId: string) =>
+      setProject((prev) => ({
+        ...prev,
+        posts: [
+          ...(prev.posts ?? []),
+          { id: uid('post'), postTypeId, sideId, pos },
+        ],
+      })),
+    [],
+  );
 
-  const removePost = (id: string) =>
-    setProject((prev) => ({
-      ...prev,
-      posts: (prev.posts ?? []).filter((p) => p.id !== id),
-    }));
+  const removePost = useCallback(
+    (id: string) =>
+      setProject((prev) => ({
+        ...prev,
+        posts: (prev.posts ?? []).filter((p) => p.id !== id),
+      })),
+    [],
+  );
 
-  const updatePost = (id: string, patch: Partial<(typeof project.posts)[number]>) =>
-    setProject((prev) => ({
-      ...prev,
-      posts: (prev.posts ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)),
-    }));
+  const updatePost = useCallback(
+    (id: string, patch: Partial<(typeof project.posts)[number]>) =>
+      setProject((prev) => ({
+        ...prev,
+        posts: (prev.posts ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)),
+      })),
+    [],
+  );
+
+  const setUnit = useCallback((unit: Project['unit']) => patch({ unit }), [patch]);
+  const setRects = useCallback((rects: Project['rects']) => patch({ rects }), [patch]);
+  const setDimensionBasis = useCallback(
+    (dimensionBasis: NonNullable<Project['dimensionBasis']>) => patch({ dimensionBasis }),
+    [patch],
+  );
+  const setTile = useCallback((tile: Project['tile']) => patch({ tile }), [patch]);
+  const setGrid = useCallback((grid: Project['grid']) => patch({ grid }), [patch]);
+  const setBorderTypes = useCallback(
+    (borderTypes: Project['borderTypes']) => patch({ borderTypes }),
+    [patch],
+  );
+  const setPostTypes = useCallback(
+    (postTypes: NonNullable<Project['postTypes']>) => patch({ postTypes }),
+    [patch],
+  );
+  const setSideAssignments = useCallback(
+    (sideAssignments: Project['sideAssignments']) => patch({ sideAssignments }),
+    [patch],
+  );
+
+  const appliedOffset = useMemo(
+    () => ({ x: computed.offsetX, y: computed.offsetY }),
+    [computed.offsetX, computed.offsetY],
+  );
 
   return (
     <div className="flex h-full flex-col bg-slate-100 text-slate-800">
@@ -72,7 +116,7 @@ export default function App() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-slate-500">Units</span>
-          <UnitSelector unit={project.unit} onChange={(u) => patch({ unit: u })} />
+          <UnitSelector unit={project.unit} onChange={setUnit} />
         </div>
         <div className="ml-auto">
           <ProjectBar project={project} onLoad={(p) => setProject(p)} />
@@ -82,27 +126,27 @@ export default function App() {
       <div className="grid flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[340px_1fr_360px]">
         {/* Controls */}
         <aside className="space-y-3 overflow-y-auto border-r border-slate-200 bg-slate-50 p-3">
-          <ShapeBuilder rects={project.rects} unit={project.unit} onChange={(rects) => patch({ rects })} />
+          <ShapeBuilder rects={project.rects} unit={project.unit} onChange={setRects} />
           <DimensionBasisPanel
             basis={project.dimensionBasis ?? 'tileField'}
-            onChange={(dimensionBasis) => patch({ dimensionBasis })}
+            onChange={setDimensionBasis}
           />
-          <TileConfigPanel tile={project.tile} unit={project.unit} onChange={(tile) => patch({ tile })} />
+          <TileConfigPanel tile={project.tile} unit={project.unit} onChange={setTile} />
           <GridControls
             grid={project.grid}
             unit={project.unit}
-            appliedOffset={{ x: computed.offsetX, y: computed.offsetY }}
-            onChange={(grid) => patch({ grid })}
+            appliedOffset={appliedOffset}
+            onChange={setGrid}
           />
           <BorderTypesPanel
             borderTypes={project.borderTypes}
             unit={project.unit}
-            onChange={(borderTypes) => patch({ borderTypes })}
+            onChange={setBorderTypes}
           />
           <PostTypesPanel
             postTypes={project.postTypes ?? []}
             unit={project.unit}
-            onChange={(postTypes) => patch({ postTypes })}
+            onChange={setPostTypes}
           />
           <PlacedPostsPanel
             posts={project.posts ?? []}
@@ -123,7 +167,7 @@ export default function App() {
             gridMode={project.grid.mode}
             hoveredSideId={hoveredSideId}
             onHover={setHoveredSideId}
-            onChange={(sideAssignments) => patch({ sideAssignments })}
+            onChange={setSideAssignments}
             onToggleCutSide={toggleCutSide}
           />
         </aside>
