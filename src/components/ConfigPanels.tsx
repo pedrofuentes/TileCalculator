@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import type { BorderType, GridConfig, Post, PostType, SideAssignment, TileConfig, Unit } from '../types';
 import type { Side } from '../geometry/sides';
 import { fromInches, roundDisplay, UNIT_LABELS } from '../units';
@@ -7,7 +7,7 @@ import { Field, LengthInput, NumberBox, Section } from './ui';
 
 const UNITS: Unit[] = ['in', 'ft', 'cm', 'mm'];
 
-export function UnitSelector({ unit, onChange }: { unit: Unit; onChange: (u: Unit) => void }) {
+function UnitSelectorImpl({ unit, onChange }: { unit: Unit; onChange: (u: Unit) => void }) {
   return (
     <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 text-sm">
       {UNITS.map((u) => (
@@ -25,7 +25,7 @@ export function UnitSelector({ unit, onChange }: { unit: Unit; onChange: (u: Uni
   );
 }
 
-export function TileConfigPanel({
+function TileConfigPanelImpl({
   tile,
   unit,
   onChange,
@@ -49,7 +49,7 @@ export function TileConfigPanel({
   );
 }
 
-export function GridControls({
+function GridControlsImpl({
   grid,
   unit,
   appliedOffset,
@@ -99,7 +99,7 @@ export function GridControls({
   );
 }
 
-export function BorderTypesPanel({
+function BorderTypesPanelImpl({
   borderTypes,
   unit,
   onChange,
@@ -170,7 +170,7 @@ export function BorderTypesPanel({
   );
 }
 
-export function PostTypesPanel({
+function PostTypesPanelImpl({
   postTypes,
   unit,
   onChange,
@@ -237,7 +237,7 @@ function sideLabel(side: Side, unit: Unit): string {
   return `${orient} \u00b7 ${roundDisplay(fromInches(side.length, unit), 2)} ${UNIT_LABELS[unit]}`;
 }
 
-export function PlacedPostsPanel({
+function PlacedPostsPanelImpl({
   posts,
   postTypes,
   sides,
@@ -361,7 +361,7 @@ export function PlacedPostsPanel({
   );
 }
 
-export function SideAssignmentPanel({
+function SideAssignmentPanelImpl({
   sides,
   assignments,
   borderTypes,
@@ -483,7 +483,7 @@ export function SideAssignmentPanel({
   );
 }
 
-export function DimensionBasisPanel({
+function DimensionBasisPanelImpl({
   basis,
   onChange,
 }: {
@@ -528,5 +528,14 @@ export function DimensionBasisPanel({
 export function TileGapNote() {
   return null;
 }
+
+export const UnitSelector = memo(UnitSelectorImpl);
+export const TileConfigPanel = memo(TileConfigPanelImpl);
+export const GridControls = memo(GridControlsImpl);
+export const BorderTypesPanel = memo(BorderTypesPanelImpl);
+export const PostTypesPanel = memo(PostTypesPanelImpl);
+export const PlacedPostsPanel = memo(PlacedPostsPanelImpl);
+export const SideAssignmentPanel = memo(SideAssignmentPanelImpl);
+export const DimensionBasisPanel = memo(DimensionBasisPanelImpl);
 
 export { NumberBox };
