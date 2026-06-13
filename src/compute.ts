@@ -74,10 +74,17 @@ export function computeProject(project: Project): Computed {
   let grid: GridResult;
   if (project.grid.mode === 'auto') {
     const targets = buildFlushTargets(project, shape, inset);
-    const opt = optimizeOffset(tileDeck, project.tile, targets);
+    // Optimize the offset against the POST-FREE polygon. Posts are interior
+    // notches that add cut cells regardless of which offset is chosen, and the
+    // cut-side/flush logic depends on deck edges, not posts. Running the search
+    // here avoids multiplying the offset search and per-candidate clip cost by
+    // the post count.
+    const opt = optimizeOffset(insetDeck, project.tile, targets);
     offsetX = opt.offsetX;
     offsetY = opt.offsetY;
-    grid = opt.grid;
+    // The post-footprint subtraction (tileDeck) is applied once above; a single
+    // final classify against it produces the notched grid the app consumes.
+    grid = classifyGrid(tileDeck, project.tile, offsetX, offsetY);
   } else {
     grid = classifyGrid(tileDeck, project.tile, offsetX, offsetY);
   }

@@ -1,5 +1,6 @@
 import type { TileConfig } from '../types';
 import type { MultiPoly } from './polygon';
+import { multiPolyBBox } from './polygon';
 import { classifyGrid, type GridResult } from './grid';
 
 function mod(n: number, m: number): number {
@@ -93,11 +94,15 @@ export function optimizeOffset(
   const offX = uniqueOffsets(xs, moduleW);
   const offY = uniqueOffsets(ys, moduleH);
 
+  // Hoist the deck bbox: it is offset-independent, so compute it once and reuse
+  // it for every candidate classify instead of recomputing per offset.
+  const bbox = deck.length > 0 ? multiPolyBBox(deck) : undefined;
+
   let best: OptimizeResult | null = null;
   let bestScore: [number, number, number] | null = null;
   for (const ox of offX) {
     for (const oy of offY) {
-      const grid = classifyGrid(deck, tile, ox, oy);
+      const grid = classifyGrid(deck, tile, ox, oy, bbox);
       const s = score(ox, oy, grid, targets, moduleW, moduleH);
       if (best === null || bestScore === null || less(s, bestScore)) {
         best = { offsetX: ox, offsetY: oy, grid };
@@ -107,7 +112,7 @@ export function optimizeOffset(
   }
 
   if (best === null) {
-    best = { offsetX: 0, offsetY: 0, grid: classifyGrid(deck, tile, 0, 0) };
+    best = { offsetX: 0, offsetY: 0, grid: classifyGrid(deck, tile, 0, 0, bbox) };
   }
   return best;
 }

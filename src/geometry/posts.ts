@@ -74,14 +74,16 @@ export function buildPostShapes(
   }
 
   let footprints: MultiPoly = [];
-  if (rings.length > 0) {
+  if (rings.length === 1) {
+    // Single post: no union needed, use the ring directly.
     footprints = [rings[0]];
-    for (let i = 1; i < rings.length; i++) {
-      footprints = polygonClipping.union(
-        footprints as never,
-        [rings[i]] as never,
-      ) as unknown as MultiPoly;
-    }
+  } else if (rings.length > 1) {
+    // Batch all footprints into a single union call instead of accumulating
+    // pairwise (which was O(P^2) in the post count).
+    footprints = polygonClipping.union(
+      rings[0] as never,
+      ...(rings.slice(1) as never[]),
+    ) as unknown as MultiPoly;
   }
 
   return { shapes, footprints };
