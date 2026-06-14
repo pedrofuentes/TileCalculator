@@ -15,6 +15,10 @@ export interface TileConfig {
   width: number;
   height: number;
   gap: number;
+  /** Number of visible "wood" slats/stripes drawn across the tile (along the grain). */
+  slats: number;
+  /** Whether the tile has a visible grain direction (drawn + alternated). */
+  directional: boolean;
 }
 
 export interface BorderType {
@@ -74,6 +78,19 @@ export interface Project {
   postTypes: PostType[];
   posts: Post[];
   grid: GridConfig;
+  /**
+   * Tile layout pattern:
+   *  - 'uniform': every tile shares the same grain direction.
+   *  - 'checkerboard': grain rotates 90deg on every tile (by (col+row) parity).
+   */
+  layoutPattern: 'uniform' | 'checkerboard';
+  /** Grain direction of the even/origin tile. */
+  grainDirection: 'horizontal' | 'vertical';
+  /**
+   * When true, offcut reuse is modeled with edge- & grain-aware pairing (interlocking
+   * tiles). When false, the optimistic area-based estimate is used.
+   */
+  interlockReuse: boolean;
   /**
    * What the deck dimensions represent:
    *  - 'tileField': dimensions are the tile area; trim extends outward (no tile reduction).

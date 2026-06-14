@@ -1,4 +1,5 @@
 import type { Project } from '../types';
+import { normalizeProject } from './defaults';
 
 const KEY = 'deck-tile-calc:projects';
 
@@ -10,7 +11,10 @@ export function loadAll(): SavedProjects {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return {};
-    return JSON.parse(raw) as SavedProjects;
+    const parsed = JSON.parse(raw) as SavedProjects;
+    const out: SavedProjects = {};
+    for (const [k, v] of Object.entries(parsed)) out[k] = normalizeProject(v);
+    return out;
   } catch {
     return {};
   }

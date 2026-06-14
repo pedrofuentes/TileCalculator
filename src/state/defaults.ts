@@ -68,12 +68,34 @@ export function makeDefaultProject(): Project {
     name: 'NewTechWood L-Deck',
     unit: 'in',
     rects,
-    tile: { width: 12, height: 12, gap: 0 },
+    tile: { width: 12, height: 12, gap: 0, slats: 3, directional: true },
     borderTypes: [TRIM, FASCIA],
     sideAssignments: assignAllSides(rects, TRIM.id),
     postTypes: [RAILING_POST, POST_2X4],
     posts: [],
     grid: { mode: 'auto', offsetX: 0, offsetY: 0, cutSides: [] },
+    layoutPattern: 'checkerboard',
+    grainDirection: 'horizontal',
+    interlockReuse: true,
     dimensionBasis: 'tileField',
+  };
+}
+
+/** Backfill fields added in later versions so older saved projects load cleanly. */
+export function normalizeProject(p: Project): Project {
+  return {
+    ...p,
+    tile: {
+      ...p.tile,
+      slats: p.tile?.slats ?? 3,
+      directional: p.tile?.directional ?? true,
+    },
+    postTypes: p.postTypes ?? [],
+    posts: p.posts ?? [],
+    grid: { ...p.grid, cutSides: p.grid?.cutSides ?? [] },
+    layoutPattern: p.layoutPattern ?? 'checkerboard',
+    grainDirection: p.grainDirection ?? 'horizontal',
+    interlockReuse: p.interlockReuse ?? true,
+    dimensionBasis: p.dimensionBasis ?? 'tileField',
   };
 }
