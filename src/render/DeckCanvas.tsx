@@ -139,7 +139,9 @@ const PatternLayer = memo(function PatternLayer({
   showPattern: boolean;
 }) {
   const nodes = useMemo(() => {
-    if (!showPattern || !tile.directional) return null;
+    // 'none' draws no slat stripes at all. cellOrientation only special-cases
+    // 'checkerboard', so we must gate on the pattern value here, not on it.
+    if (!showPattern || layoutPattern === 'none' || !tile.directional) return null;
     const slats = Math.max(1, Math.floor(tile.slats));
     if (slats < 2) return null; // a single slat has no divider lines
     const w = tile.width * scale;
@@ -553,6 +555,94 @@ const DimensionsLayer = memo(function DimensionsLayer({
   return <g style={{ pointerEvents: 'none' }}>{nodes}</g>;
 });
 
+// Per-post gap dimensions: for each placed post, annotate the two corner gaps
+// along its side (start corner -> near face, and far face -> end corner). These
+// mirror the sidebar "from start" / "from end" gap inputs:
+//   gapStart = pos - width/2   gapEnd = sideLen - pos - width/2
+// Drawn with the SAME architectural vocabulary as the edge dimensions, but
+// offset INWARD (opposite the outward normal) so they sit clear of the post
+// footprint and never collide with the outward edge/overall dimension chains.
+// Pure (no hover state) -> memoized; re-renders only when posts/sides/toggle
+// state change.
+const PostDimensionsLayer = memo(function PostDimensionsLayer({
+  posts,
+  sideMap,
+  toScreen,
+  show,
+  unit,
+  terminator,
+}: {
+  posts: PostShapes;
+  sideMap: SideMap;
+  toScreen: ToScreen;
+  show: boolean;
+  unit: Unit;
+  terminator: Terminator;
+}) {
+  const nodes = useMemo(() => {
+    if (!show || posts.length === 0) return null;
+    const out: ReactElement[] = [];
+    const off = 14; // inches inward from the edge: distinct from the outward edge dims
+    for (const ps of posts) {
+      const side = sideMap.get(ps.post.sideId);
+      if (!side) continue; // post's side no longer exists -> skip gracefully
+      const len = side.length;
+      if (len <= 0) continue;
+      const ux = (side.b[0] - side.a[0]) / len;
+      const uy = (side.b[1] - side.a[1]) / len;
+      const hw = ps.type.width / 2; // post half-span along the edge
+      const pos = Math.max(0, Math.min(len, ps.post.pos));
+      const gapStart = pos - hw; // start corner -> near face
+      const gapEnd = len - pos - hw; // far face -> end corner
+      const inward: Pt = [-side.outward[0], -side.outward[1]];
+
+      if (gapStart > 0.01) {
+        const nearFace: Pt = [side.a[0] + ux * (pos - hw), side.a[1] + uy * (pos - hw)];
+        out.push(
+          buildDim(
+            `pd-${ps.post.id}-s`,
+            side.a,
+            nearFace,
+            inward,
+            off,
+            formatDimension(gapStart, unit, true),
+            toScreen,
+            terminator,
+            DIM_LINE,
+            DIM_TEXT,
+            0.85,
+            10,
+            400,
+          ),
+        );
+      }
+      if (gapEnd > 0.01) {
+        const farFace: Pt = [side.a[0] + ux * (pos + hw), side.a[1] + uy * (pos + hw)];
+        out.push(
+          buildDim(
+            `pd-${ps.post.id}-e`,
+            farFace,
+            side.b,
+            inward,
+            off,
+            formatDimension(gapEnd, unit, true),
+            toScreen,
+            terminator,
+            DIM_LINE,
+            DIM_TEXT,
+            0.85,
+            10,
+            400,
+          ),
+        );
+      }
+    }
+    return out;
+  }, [posts, sideMap, toScreen, show, unit, terminator]);
+
+  return <g style={{ pointerEvents: 'none' }}>{nodes}</g>;
+});
+
 const PostsLayer = memo(function PostsLayer({
   posts,
   toScreen,
@@ -646,10 +736,27 @@ export const DeckCanvas = memo(function DeckCanvas({
   const layout = useMemo(() => {
     const { bbox } = computed;
     const maxFace = project.borderTypes.reduce((mx, t) => Math.max(mx, t.faceWidth), 0);
-    const margin = maxFace + 72; // world inches: borders + per-edge dims + outer overall chain + text
-    const worldW = bbox.maxX - bbox.minX + margin * 2;
-    const worldH = bbox.maxY - bbox.minY + margin * 2;
     const targetW = 820;
+    const bboxW = bbox.maxX - bbox.minX;
+    // World-inch offset of the OUTERMOST dimension LINE (the overall chain).
+    // Must stay in sync with `overallOff` in DimensionsLayer (maxFace + 46).
+    const outerLineOff = maxFace + 46;
+    // Outward extent (in SCREEN px) of the dimension TEXT beyond that line:
+    // TEXT_NUDGE (center nudge) + half the text box height (fontSize 11 -> th 17
+    // -> 8.5) + backing-rect stroke, with a few px of slack. This is scale-
+    // independent, so in WORLD inches it is textExtentPx / scale.
+    const textExtentPx = TEXT_NUDGE + 11 + 6; // ~28px, dominates terminator extent
+    // We need: margin >= outerLineOff + textExtentPx / scale, where
+    // scale = targetW / (bboxW + 2*margin). Substituting and solving the linear
+    // equation for margin yields equality (margin == outerLineOff + textExtentPx/scale),
+    // which provably contains the outermost text at ANY scale.
+    const denom = 1 - (2 * textExtentPx) / targetW;
+    const margin =
+      denom > 0
+        ? (outerLineOff + (textExtentPx * bboxW) / targetW) / denom
+        : outerLineOff + textExtentPx;
+    const worldW = bboxW + margin * 2;
+    const worldH = bbox.maxY - bbox.minY + margin * 2;
     const scale = worldW > 0 ? targetW / worldW : 1;
     const toScreen = (p: Pt): Pt => [
       (p[0] - bbox.minX + margin) * scale,
@@ -838,6 +945,16 @@ export const DeckCanvas = memo(function DeckCanvas({
             assignMap={assignMap}
             borderTypeMap={borderTypeMap}
             inset={computed.inset}
+            toScreen={toScreen}
+            show={showLabels}
+            unit={unit}
+            terminator={terminator}
+          />
+
+          {/* Per-post corner-gap dimensions (gated by the same Dimensions toggle) */}
+          <PostDimensionsLayer
+            posts={computed.posts.shapes}
+            sideMap={sideMap}
             toScreen={toScreen}
             show={showLabels}
             unit={unit}
