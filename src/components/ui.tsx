@@ -48,6 +48,7 @@ export function LengthInput({
   className = '',
   min,
   ariaLabel,
+  fullWidth = false,
 }: {
   valueInches: number;
   unit: Unit;
@@ -55,6 +56,7 @@ export function LengthInput({
   className?: string;
   min?: number;
   ariaLabel?: string;
+  fullWidth?: boolean;
 }) {
   const display = () => String(roundDisplay(fromInches(valueInches, unit), 4));
   const [draft, setDraft] = useState(display);
@@ -76,7 +78,7 @@ export function LengthInput({
   };
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className={`items-center gap-1 ${fullWidth ? 'flex w-full' : 'inline-flex'}`}>
       <input
         type="number"
         step="any"
@@ -87,7 +89,7 @@ export function LengthInput({
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
-        className={`w-24 rounded border border-slate-300 px-2 py-1 text-right text-sm focus:border-sky-500 focus:outline-none ${className}`}
+        className={`${fullWidth ? 'w-full min-w-0' : 'w-24'} rounded border border-slate-300 px-2 py-1 text-right text-sm focus:border-sky-500 focus:outline-none ${className}`}
       />
       <span className="w-6 text-xs text-slate-400">{UNIT_LABELS[unit]}</span>
     </span>
