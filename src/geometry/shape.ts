@@ -13,7 +13,10 @@ export function buildShape(rects: RectOp[]): MultiPoly {
     if (r.op === 'add') {
       result =
         result.length === 0
-          ? (rectPoly as unknown as MultiPoly)
+          ? // Wrap the single Poly into a MultiPoly. (Previously this returned the
+            // bare Poly, which only worked when a later union/difference normalized
+            // it — a lone add-rectangle deck produced a malformed shape and crashed.)
+            ([rectPoly] as unknown as MultiPoly)
           : (polygonClipping.union(result as never, rectPoly as never) as unknown as MultiPoly);
     } else {
       if (result.length === 0) continue;

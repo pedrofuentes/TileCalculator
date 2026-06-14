@@ -856,6 +856,11 @@ export const DeckCanvas = memo(function DeckCanvas({
     }
     const availW = el.clientWidth - 32;
     const availH = el.clientHeight - 32;
+    if (availW <= 0 || availH <= 0) {
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
     const z = Math.max(ZOOM_MIN, Math.min(1, availW / w, availH / h));
     setZoom(z);
     setPan({ x: 0, y: 0 });
@@ -1066,7 +1071,6 @@ export const DeckCanvas = memo(function DeckCanvas({
   const shapeDragRef = useRef<
     null | { mode: HandleId | 'move'; rectId: string; orig: RectOp; startWorld: Pt }
   >(null);
-  const rectRafRef = useRef<number | null>(null);
   const rectPendingRef = useRef<{ id: string; patch: Partial<RectOp> } | null>(null);
   const [draftRect, setDraftRect] = useState<RectOp | null>(null);
   const snapRef = useRef(snap);
@@ -1078,24 +1082,16 @@ export const DeckCanvas = memo(function DeckCanvas({
     snapStepRef.current = snapStep;
   }, [snapStep]);
 
+  // Commit the final dragged/resized rectangle to global project state. Called
+  // once on pointer-up so computeProject (tile/border/post re-flow) runs a single
+  // time per drag rather than every frame.
   const flushRectUpdate = useCallback(() => {
-    rectRafRef.current = null;
     const p = rectPendingRef.current;
     if (p) {
       rectPendingRef.current = null;
       onUpdateRect?.(p.id, p.patch);
     }
   }, [onUpdateRect]);
-
-  const scheduleRectUpdate = useCallback(
-    (id: string, patch: Partial<RectOp>) => {
-      rectPendingRef.current = { id, patch };
-      if (rectRafRef.current == null) {
-        rectRafRef.current = requestAnimationFrame(flushRectUpdate);
-      }
-    },
-    [flushRectUpdate],
-  );
 
   // Begin a rect drag. Move/up are handled at the WINDOW level (not via element
   // pointer-capture) so dragging small handles/rectangles keeps tracking even
@@ -1120,8 +1116,11 @@ export const DeckCanvas = memo(function DeckCanvas({
         const dy = wp[1] - d.startWorld[1];
         const snapOn = snapRef.current && !ev.altKey;
         const next = applyRectDrag(d.orig, d.mode, dx, dy, snapOn ? snapStepRef.current : 0);
+        // Only update the local draft overlay during the drag — this drives the
+        // live visual without re-running computeProject. The expensive global
+        // commit (which re-flows tiles/borders/posts) happens once on release.
         setDraftRect({ ...d.orig, ...next });
-        scheduleRectUpdate(d.rectId, next);
+        rectPendingRef.current = { id: d.rectId, patch: next };
       };
       const onUp = () => {
         flushRectUpdate();
@@ -1133,7 +1132,7 @@ export const DeckCanvas = memo(function DeckCanvas({
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
     },
-    [rects, onSelectRect, clientToWorld, scheduleRectUpdate, flushRectUpdate],
+    [rects, onSelectRect, clientToWorld, flushRectUpdate],
   );
 
   return (

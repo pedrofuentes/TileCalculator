@@ -96,8 +96,9 @@ export default function App() {
     [],
   );
 
-  // Add a rectangle at a VISIBLE offset (to the right of the current shape) so
-  // it never lands hidden inside the existing deck; auto-select it for editing.
+  // Add a rectangle adjacent to (touching the right edge of) the current shape
+  // so it is visible/connected rather than hidden inside the existing deck;
+  // auto-select it for editing. The canvas auto-fits so it stays on-screen.
   const addRect = useCallback(() => {
     const id = uid('rect');
     setProject((prev) => {
