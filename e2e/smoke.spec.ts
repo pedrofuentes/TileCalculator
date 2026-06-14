@@ -26,6 +26,13 @@ test('app mounts without crashing', async ({ page }) => {
   // Core chrome is present: at least one numeric input renders.
   await expect(page.locator('input[type="number"]').first()).toBeVisible();
 
+  // Branding + license are present on the page.
+  await expect(page.getByRole('heading', { name: 'Tile Calculator', level: 1 })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'MIT License' })).toBeVisible();
+
+  // The startup project is the "Tile1" simple square default.
+  await expect(page.getByPlaceholder('Project name')).toHaveValue('Tile1');
+
   expect(errors, `console/page errors:\n${errors.join('\n')}`).toEqual([]);
 });
 

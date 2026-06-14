@@ -42,14 +42,21 @@ export const POST_2X4: PostType = {
   color: '#be123c',
 };
 
-// L-shaped deck: NewTechWood first use case.
-// Outer length 348" (X), outer width 184.5" (Y).
-// Horizontal arm thickness 120.875" (Y), vertical arm thickness 90.25" (X).
+// L-shaped deck: a sample/example shape used as a stable test fixture (it has an
+// inside corner and produces cut tiles). The NewTechWood first use case:
+// Outer length 348" (X), outer width 184.5" (Y). Horizontal arm thickness
+// 120.875" (Y), vertical arm thickness 90.25" (X).
 export function defaultRects(): RectOp[] {
   return [
     { id: uid('rect'), x: 0, y: 0, w: 348, h: 120.875, op: 'add' },
     { id: uid('rect'), x: 0, y: 0, w: 90.25, h: 184.5, op: 'add' },
   ];
+}
+
+// Default startup shape: a simple 8 ft (96") square. Kept deliberately minimal so
+// a first-time visitor starts from an easy-to-understand layout.
+export function squareRects(): RectOp[] {
+  return [{ id: uid('rect'), x: 0, y: 0, w: 96, h: 96, op: 'add' }];
 }
 
 /** Assign every derived side of the shape to the given border type id (or null). */
@@ -63,9 +70,9 @@ export function assignAllSides(
 }
 
 export function makeDefaultProject(): Project {
-  const rects = defaultRects();
+  const rects = squareRects();
   return {
-    name: 'NewTechWood L-Deck',
+    name: 'Tile1',
     unit: 'in',
     rects,
     tile: { width: 12, height: 12, gap: 0, slats: 3, directional: true },
@@ -78,6 +85,22 @@ export function makeDefaultProject(): Project {
     grainDirection: 'horizontal',
     interlockReuse: true,
     dimensionBasis: 'tileField',
+  };
+}
+
+/**
+ * Sample L-shaped project (the NewTechWood first use case). Stable fixture for
+ * tests/examples that need an irregular shape with inside corners and cut tiles;
+ * kept separate from `makeDefaultProject()` so the app's startup default can stay
+ * a simple square.
+ */
+export function sampleProject(): Project {
+  const rects = defaultRects();
+  return {
+    ...makeDefaultProject(),
+    name: 'Sample L-Deck',
+    rects,
+    sideAssignments: assignAllSides(rects, TRIM.id),
   };
 }
 

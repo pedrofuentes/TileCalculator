@@ -1,6 +1,6 @@
 # Architecture
 
-Technical reference for the Deck Tile Calculator & Visualizer. For the feature overview see
+Technical reference for the Tile Calculator. For the feature overview see
 [`../README.md`](../README.md); for contributor conventions and gotchas see
 [`../AGENTS.md`](../AGENTS.md).
 
@@ -120,7 +120,8 @@ This is read from refs so window-level drag handlers always see fresh transform 
 
 ## State & persistence (`src/state/`)
 
-- `defaults.ts` — `makeDefaultProject()` (the NewTechWood L-deck preset) and
+- `defaults.ts` — `makeDefaultProject()` (the **Tile1** simple 8×8 ft square startup project),
+  `sampleProject()` (the NewTechWood L-deck example fixture used by tests/examples), and
   **`normalizeProject(p)`**, which backfills every field with sane defaults so older/partial
   projects load cleanly. This is the single chokepoint for forward-compatibility; it runs on
   every localStorage load and every JSON import.

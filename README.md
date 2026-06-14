@@ -1,12 +1,15 @@
-# Deck Tile Calculator & Visualizer
+# Tile Calculator
 
-A web app that calculates how many deck tiles and edge borders are needed to cover an
-**irregular** deck, and shows an interactive top-down visual of the tile layout — including
-which tiles must be cut, where borders and posts go, the slat/grain pattern, and architectural
-dimensions on every side.
+A web app that calculates how many tiles and edge borders are needed to cover an **irregular**
+area (decks, patios, floors, …), and shows an interactive top-down visual of the tile layout —
+including which tiles must be cut, where borders and posts go, the slat/grain pattern, and
+architectural dimensions on every side.
 
-Generic by design (configurable tile size, border types, post types, and units) and
-preconfigured for a NewTechWood UltraShield QuickDeck L-shaped deck.
+Generic by design (configurable tile size, border types, post types, and units). It starts from
+a simple **8 × 8 ft square** (project **"Tile1"**); a NewTechWood UltraShield QuickDeck L-shaped
+layout ships as a built-in sample (`sampleProject()`).
+
+**Live demo:** https://pedrofuentes.github.io/TileCalculator/
 
 > **Docs:** this README is the user-facing overview. See [`AGENTS.md`](./AGENTS.md) for
 > contributor/AI-agent guidance and [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the
@@ -81,6 +84,18 @@ boolean geometry.
 - A **pre-commit hook** (husky + lint-staged) runs ESLint on staged files and the unit tests
   before each commit.
 
+## Deployment (GitHub Pages)
+
+The app is a static SPA deployed to **GitHub Pages** at
+https://pedrofuentes.github.io/TileCalculator/.
+
+- `.github/workflows/deploy.yml` builds on every push to `main` and publishes `dist/` via the
+  official Pages actions (`configure-pages` → `upload-pages-artifact` → `deploy-pages`).
+- `vite.config.ts` sets `base: '/TileCalculator/'` for production builds (and `/` for local
+  dev), so asset URLs resolve under the project-pages subpath.
+- To enable on a fork: in **Settings → Pages**, set **Source: GitHub Actions**, then push to
+  `main`.
+
 ## How the math works
 
 - **Deck shape** = boolean union/difference of rectangles (`polygon-clipping`), producing a
@@ -127,12 +142,17 @@ src/
     ErrorBoundary.tsx top-level error fallback
     ui.tsx            shared inputs (commit-on-blur numeric fields, toggles)
   state/
-    defaults.ts       default NewTechWood preset + normalizeProject backfill
+    defaults.ts       Tile1 square default + L-deck sampleProject + normalizeProject backfill
     storage.ts        localStorage + JSON import/export
   App.tsx             top-level state + layout
   main.tsx            React entry (wraps App in ErrorBoundary)
 ```
 
-There is no automated test suite or CI in this repo. Changes are verified with
-`npx tsc --noEmit`, `npm run build`, and manual Playwright checks — see
+Changes are verified with `npm run lint`, `npx tsc --noEmit`, `npm run build`,
+`npm run test`/`npm run test:coverage`, and `npm run test:e2e` — all gated in CI. See
 [`AGENTS.md`](./AGENTS.md).
+
+## License
+
+Released under the [MIT License](./LICENSE) — © 2026 pedrofuentes. The license is also linked
+from the app footer.

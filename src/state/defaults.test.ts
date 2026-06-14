@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import type { Project, RectOp } from '../types';
-import { makeDefaultProject, normalizeProject } from './defaults';
+import { makeDefaultProject, normalizeProject, sampleProject } from './defaults';
 
 const projectKeys: (keyof Project)[] = [
   'name',
@@ -50,7 +50,8 @@ describe('normalizeProject', () => {
 
     expectNormalizedProjectShape(normalized);
     expect(normalizeProject(normalized)).toEqual(normalized);
-    expect(normalized.rects).toHaveLength(2);
+    expect(normalized.name).toBe('Tile1');
+    expect(normalized.rects).toHaveLength(1);
     expect(normalized.borderTypes).toHaveLength(2);
     expect(normalized.sideAssignments.length).toBeGreaterThan(0);
     expect(normalized.postTypes).toHaveLength(2);
@@ -72,6 +73,15 @@ describe('normalizeProject', () => {
     expect(normalized.grainDirection).toBe('horizontal');
     expect(normalized.interlockReuse).toBe(true);
     expect(normalized.dimensionBasis).toBe('tileField');
+  });
+
+  test('keeps the sample L-deck fixture as an irregular two-rect shape', () => {
+    const normalized = normalizeProject(sampleProject());
+
+    expectNormalizedProjectShape(normalized);
+    expect(normalized.name).toBe('Sample L-Deck');
+    expect(normalized.rects).toHaveLength(2);
+    expect(normalized.sideAssignments.length).toBeGreaterThan(0);
   });
 
   test('backfills partial imports that only include rects', () => {

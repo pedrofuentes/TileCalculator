@@ -150,8 +150,8 @@ export default function App() {
     <div className="flex h-full flex-col bg-slate-100 text-slate-800">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-slate-200 bg-white px-4 py-3">
         <div>
-          <h1 className="text-lg font-bold text-slate-800">Deck Tile Calculator</h1>
-          <p className="text-xs text-slate-500">Tiles, borders &amp; cut planning for irregular decks</p>
+          <h1 className="text-lg font-bold text-slate-800">Tile Calculator</h1>
+          <p className="text-xs text-slate-500">Tiles, borders &amp; cut planning for irregular areas</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-slate-500">Units</span>
@@ -249,6 +249,28 @@ export default function App() {
           <ResultsPanel computed={computed} unit={project.unit} />
         </aside>
       </div>
+
+      <footer className="border-t border-slate-200 bg-white px-4 py-2 text-center text-xs text-slate-500">
+        <span>&copy; 2026 pedrofuentes</span>
+        {' \u00b7 '}
+        <a
+          className="text-slate-600 underline hover:text-slate-800"
+          href="https://github.com/pedrofuentes/TileCalculator/blob/main/LICENSE"
+          target="_blank"
+          rel="noreferrer"
+        >
+          MIT License
+        </a>
+        {' \u00b7 '}
+        <a
+          className="text-slate-600 underline hover:text-slate-800"
+          href="https://github.com/pedrofuentes/TileCalculator"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Source
+        </a>
+      </footer>
     </div>
   );
 }

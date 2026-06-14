@@ -1,12 +1,12 @@
 import { describe, test, expect } from 'vitest';
 import { computeProject } from '../compute';
-import { makeDefaultProject } from '../state/defaults';
+import { sampleProject } from '../state/defaults';
 import { computeTiles, packOffcuts } from './tiles';
 import type { OffcutStrip, TileResult } from './tiles';
 
 describe('computeTiles', () => {
-  test('computes positive and internally consistent totals for the default deck', () => {
-    const project = makeDefaultProject();
+  test('computes positive and internally consistent totals for the sample L-deck', () => {
+    const project = sampleProject();
     const computed = computeProject(project);
 
     const result: TileResult = computeTiles(computed.grid, computed.tiledArea, {
