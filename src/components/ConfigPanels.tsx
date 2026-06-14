@@ -109,6 +109,7 @@ function TilePatternPanelImpl({
         <Segmented
           value={layoutPattern}
           options={[
+            { value: 'none', label: 'None' },
             { value: 'uniform', label: 'Uniform' },
             { value: 'checkerboard', label: 'Checkerboard' },
           ]}
@@ -378,70 +379,72 @@ function PlacedPostsPanelImpl({
                 key={p.id}
                 onMouseEnter={() => onHover?.(p.sideId)}
                 onMouseLeave={() => onHover?.(null)}
-                className={`flex items-center justify-between gap-2 rounded px-1 py-0.5 text-sm transition-colors ${
+                className={`flex flex-col gap-1 rounded px-1 py-1 text-sm transition-colors ${
                   hoveredSideId === p.sideId ? 'bg-sky-100 ring-1 ring-sky-300' : ''
                 }`}
               >
-                <span className="flex items-center gap-1 text-slate-600">
-                  <span
-                    className="inline-block h-3 w-3 rounded-full"
-                    style={{ background: type?.color ?? '#94a3b8' }}
-                  />
-                  <span className="text-xs">
-                    {type?.name ?? 'Post'}{' '}
-                    <span className="text-slate-400">
-                      {detached ? '(detached)' : `\u00b7 Side ${(idx ?? 0) + 1}`}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1 text-slate-600">
+                    <span
+                      className="inline-block h-3 w-3 shrink-0 rounded-full"
+                      style={{ background: type?.color ?? '#94a3b8' }}
+                    />
+                    <span className="truncate text-xs">
+                      {type?.name ?? 'Post'}{' '}
+                      <span className="text-slate-400">
+                        {detached ? '(detached)' : `\u00b7 Side ${(idx ?? 0) + 1}`}
+                      </span>
                     </span>
                   </span>
-                </span>
-                <span className="flex items-center gap-1">
-                  {detached ? (
-                    <span className="text-xs text-amber-600">edge removed</span>
-                  ) : (
-                    (() => {
-                      const len = side!.length;
-                      const w = type?.width ?? 0;
-                      const clampPos = (pos: number) =>
-                        len <= w ? len / 2 : Math.max(w / 2, Math.min(len - w / 2, pos));
-                      const gapStart = p.pos - w / 2;
-                      const gapEnd = len - p.pos - w / 2;
-                      return (
-                        <span className="flex items-center gap-1">
-                          <label className="flex items-center gap-0.5 text-[10px] text-slate-400">
-                            start
-                            <LengthInput
-                              valueInches={gapStart}
-                              unit={unit}
-                              min={0}
-                              ariaLabel="Gap from start"
-                              onChange={(v) =>
-                                onUpdate(p.id, { pos: clampPos(Math.max(0, v) + w / 2) })
-                              }
-                            />
-                          </label>
-                          <label className="flex items-center gap-0.5 text-[10px] text-slate-400">
-                            end
-                            <LengthInput
-                              valueInches={gapEnd}
-                              unit={unit}
-                              min={0}
-                              ariaLabel="Gap from end"
-                              onChange={(v) =>
-                                onUpdate(p.id, { pos: clampPos(len - Math.max(0, v) - w / 2) })
-                              }
-                            />
-                          </label>
-                        </span>
-                      );
-                    })()
-                  )}
                   <button
                     onClick={() => onRemove(p.id)}
-                    className="rounded px-1 text-xs text-red-500 hover:bg-red-50"
+                    className="shrink-0 rounded px-1 text-xs text-red-500 hover:bg-red-50"
                   >
                     Delete
                   </button>
-                </span>
+                </div>
+                {detached ? (
+                  <span className="text-xs text-amber-600">edge removed</span>
+                ) : (
+                  (() => {
+                    const len = side!.length;
+                    const w = type?.width ?? 0;
+                    const clampPos = (pos: number) =>
+                      len <= w ? len / 2 : Math.max(w / 2, Math.min(len - w / 2, pos));
+                    const gapStart = p.pos - w / 2;
+                    const gapEnd = len - p.pos - w / 2;
+                    return (
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="flex min-w-0 items-center gap-1 text-[10px] text-slate-400">
+                          start
+                          <LengthInput
+                            valueInches={gapStart}
+                            unit={unit}
+                            min={0}
+                            fullWidth
+                            ariaLabel="Gap from start"
+                            onChange={(v) =>
+                              onUpdate(p.id, { pos: clampPos(Math.max(0, v) + w / 2) })
+                            }
+                          />
+                        </label>
+                        <label className="flex min-w-0 items-center gap-1 text-[10px] text-slate-400">
+                          end
+                          <LengthInput
+                            valueInches={gapEnd}
+                            unit={unit}
+                            min={0}
+                            fullWidth
+                            ariaLabel="Gap from end"
+                            onChange={(v) =>
+                              onUpdate(p.id, { pos: clampPos(len - Math.max(0, v) - w / 2) })
+                            }
+                          />
+                        </label>
+                      </div>
+                    );
+                  })()
+                )}
               </div>
             );
           })}
