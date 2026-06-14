@@ -50,15 +50,30 @@ preconfigured for a NewTechWood UltraShield QuickDeck L-shaped deck.
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # type-check (tsc -b) + production build to dist/
-npm run lint     # eslint
-npm run preview  # serve the production build
+npm run dev       # http://localhost:5173
+npm run build     # type-check (tsc -b) + production build to dist/
+npm run lint      # eslint
+npm run test      # vitest unit/integration tests
+npm run test:e2e  # playwright smoke tests (installs chromium on first run)
+npm run preview   # serve the production build
 ```
 
 Requirements: Node.js (ESM). Stack: **React 19 + TypeScript + Vite + Tailwind CSS**, with
 SVG for rendering and [`polygon-clipping`](https://github.com/mfogel/polygon-clipping) for
 boolean geometry.
+
+## Testing & CI
+
+- **Unit/integration tests** (Vitest, `src/**/*.test.ts`) cover the pure pipeline — unit
+  conversions, polygon geometry, shape building, grid classification, tile/cut-list and
+  border calculation, project normalization, JSON round-trips, and the full
+  `computeProject` integration. Run with `npm run test`.
+- **E2E smoke tests** (Playwright, `e2e/`) load the app and assert it mounts without hitting
+  the error boundary and that unit-switch / add-rectangle don't crash. Run `npm run test:e2e`.
+- **CI** (`.github/workflows/ci.yml`) runs lint → type-check → build → unit tests → e2e on
+  every push and pull request.
+- A **pre-commit hook** (husky + lint-staged) runs ESLint on staged files and the unit tests
+  before each commit.
 
 ## How the math works
 

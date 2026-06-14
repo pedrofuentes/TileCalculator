@@ -19,20 +19,32 @@ npm install            # install dependencies
 npm run dev            # Vite dev server on http://localhost:5173
 npm run build          # tsc -b && vite build  -> dist/   (authoritative green gate)
 npm run lint           # eslint
+npm run test           # vitest unit/integration tests (green gate)
+npm run test:e2e       # playwright e2e smoke tests
 npm run preview        # serve the production build
 npx tsc --noEmit       # fast type-check without emitting (authoritative green gate)
 ```
 
-- **Green gates:** `npx tsc --noEmit`, `npm run build`, and `npm run lint` must all pass
-  (lint currently reports **0 problems**). Treat these as the source of truth for "is it
-  healthy". Don't introduce new lint errors or warnings.
+- **Green gates:** `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `npm run test`
+  must all pass (lint currently reports **0 problems**). Treat these as the source of truth
+  for "is it healthy". Don't introduce new lint errors or warnings.
 
-## Verification convention (no test suite)
+## Verification convention
 
-There are **no unit tests and no CI**. Behavioural changes are verified with short, temporary
-**Playwright** scripts driven by the bundled `webapp-testing` helper, then deleted.
+The fast feedback loop is the **Vitest** suite (`src/**/*.test.ts`, Node env, ~1s): pure
+units/geometry/calc/normalize/storage plus a `computeProject` integration test. **Add or
+update a test alongside any change to the geometry or calc pipeline** — the two worst bugs in
+this repo's history (`buildShape` returning a bare `Poly`; `normalizeProject` not backfilling
+partial imports) are now locked down by explicit regression tests, and new pipeline behaviour
+should be too.
 
-Pattern used in this repo (Windows / PowerShell):
+Browser-level behaviour is covered by **Playwright** (`e2e/smoke.spec.ts`, run via
+`npm run test:e2e`), which guards the "white-screen / error-boundary" class of failures that
+unit tests can't see. CI (`.github/workflows/ci.yml`) and a husky pre-commit hook enforce
+these gates automatically.
+
+For exploratory/manual UI checks, throwaway **Playwright** scripts via the bundled
+`webapp-testing` helper are still fine (Windows / PowerShell):
 
 ```powershell
 $env:PYTHONIOENCODING='utf-8'; $env:BROWSER='none'
@@ -43,7 +55,8 @@ python $helper --server "npm run dev" --port 5173 --timeout 120 -- python tmp_ve
 - The helper starts/stops the dev server itself; the Playwright script only contains browser
   logic (`sync_playwright`, headless chromium, `goto(..., wait_until="domcontentloaded")`
   then `wait_for_load_state("networkidle")`).
-- Name throwaway scripts `tmp_*.py` and **delete them when done**. Don't commit them.
+- Name throwaway scripts `tmp_*.py` and **delete them when done**. Don't commit them (the
+  committed suite lives in `e2e/`).
 - After verifying, stop any stray dev server still listening on `:5173`.
 
 Selector notes that have bitten us before:
