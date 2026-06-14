@@ -61,13 +61,35 @@ export const ResultsPanel = memo(function ResultsPanel({ computed, unit }: { com
           <Stat
             label="Buy (with reuse)"
             value={String(tiles.reusePurchase)}
-            sub={`optimistic \u00b7 waste ${roundDisplay(tiles.wasteReuse / 144, 1)} ft\u00b2`}
+            sub={
+              tiles.interlockReuse
+                ? `interlock pairing \u00b7 ${tiles.pairedOffcuts} offcuts reused \u00b7 waste ${roundDisplay(tiles.wasteReuse / 144, 1)} ft\u00b2`
+                : `optimistic area \u00b7 waste ${roundDisplay(tiles.wasteReuse / 144, 1)} ft\u00b2`
+            }
           />
         </div>
-        <p className="text-xs text-slate-400">
-          "With reuse" is an optimistic estimate that assumes offcuts can be reused where geometry allows.
-          "Safe" counts one tile per cut location.
-        </p>
+        {tiles.interlockReuse ? (
+          <>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+              <span>Paired offcuts: <strong className="text-slate-700">{tiles.pairedOffcuts}</strong></span>
+              <span>Own-tile pieces: <strong className="text-slate-700">{tiles.ownTilePieces}</strong></span>
+              <span>Cut grain: <strong className="text-slate-700">{tiles.orientationTally.h} H</strong> / <strong className="text-slate-700">{tiles.orientationTally.v} V</strong></span>
+            </div>
+            <p className="text-xs text-slate-400">
+              "With reuse" assumes tiles interlock on all sides. A straight-cut offcut keeps a
+              connector on its uncut edges, so two complementary pieces from one tile can be reused
+              when their reduced dimensions fit a single tile along the same axis and their grain
+              orientation matches. L-cuts and double-reduced corner pieces each need their own tile.
+              "Safe" counts one tile per cut location.
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-slate-400">
+            "With reuse" is an optimistic area estimate that assumes offcuts pack perfectly where
+            geometry allows. Enable interlock reuse for an edge- &amp; grain-aware count.
+            "Safe" counts one tile per cut location.
+          </p>
+        )}
       </Section>
 
       <Section title="Borders">
