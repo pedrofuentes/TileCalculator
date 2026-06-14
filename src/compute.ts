@@ -89,8 +89,13 @@ export function computeProject(project: Project): Computed {
     grid = classifyGrid(tileDeck, project.tile, offsetX, offsetY);
   }
 
-  const tileArea = project.tile.width * project.tile.height;
-  const tiles = computeTiles(grid, tiledArea, tileArea);
+  const tiles = computeTiles(grid, tiledArea, {
+    width: project.tile.width,
+    height: project.tile.height,
+    pattern: project.layoutPattern,
+    grainDirection: project.grainDirection,
+    interlockReuse: project.interlockReuse,
+  });
   const borders = computeBorders(
     shape.sides,
     shape.corners,
