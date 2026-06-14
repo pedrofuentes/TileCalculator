@@ -1,5 +1,5 @@
-import { memo, useMemo, useState } from 'react';
-import type { ReactElement } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactElement, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { Computed } from '../compute';
 import type { Project, Unit } from '../types';
 import type { MultiPoly, Pt } from '../geometry/polygon';
@@ -465,7 +465,8 @@ const DimensionsLayer = memo(function DimensionsLayer({
   borderTypeMap,
   inset,
   toScreen,
-  show,
+  showEdges,
+  showOverall,
   unit,
   terminator,
 }: {
@@ -475,12 +476,13 @@ const DimensionsLayer = memo(function DimensionsLayer({
   borderTypeMap: BorderTypeMap;
   inset: boolean;
   toScreen: ToScreen;
-  show: boolean;
+  showEdges: boolean;
+  showOverall: boolean;
   unit: Unit;
   terminator: Terminator;
 }) {
   const nodes = useMemo(() => {
-    if (!show) return null;
+    if (!showEdges && !showOverall) return null;
     let maxFace = 0;
     for (const t of borderTypeMap.values()) maxFace = Math.max(maxFace, t.faceWidth);
     const overallOff = maxFace + 46;
@@ -489,68 +491,72 @@ const DimensionsLayer = memo(function DimensionsLayer({
 
     // Per-edge dimensions: each placed along its own outward normal so the
     // L-shape's reflex corner is handled naturally.
-    for (const side of sides) {
-      const assigned = assignMap.get(side.id);
-      const t = assigned ? borderTypeMap.get(assigned) : null;
-      const face = t?.faceWidth ?? 0;
-      const off = (inset ? 0 : face) + 16;
+    if (showEdges) {
+      for (const side of sides) {
+        const assigned = assignMap.get(side.id);
+        const t = assigned ? borderTypeMap.get(assigned) : null;
+        const face = t?.faceWidth ?? 0;
+        const off = (inset ? 0 : face) + 16;
+        out.push(
+          buildDim(
+            `d-${side.id}`,
+            side.a,
+            side.b,
+            side.outward,
+            off,
+            formatDimension(side.length, unit, true),
+            toScreen,
+            terminator,
+            DIM_LINE,
+            DIM_TEXT,
+            0.85,
+            10,
+            400,
+          ),
+        );
+      }
+    }
+
+    // Overall bounding dimensions on an OUTER chain (larger offset).
+    if (showOverall) {
       out.push(
         buildDim(
-          `d-${side.id}`,
-          side.a,
-          side.b,
-          side.outward,
-          off,
-          formatDimension(side.length, unit, true),
+          'd-overall-w',
+          [bbox.minX, bbox.maxY] as Pt,
+          [bbox.maxX, bbox.maxY] as Pt,
+          [0, 1] as Pt,
+          overallOff,
+          formatDimension(bbox.maxX - bbox.minX, unit, true),
           toScreen,
           terminator,
-          DIM_LINE,
-          DIM_TEXT,
-          0.85,
-          10,
-          400,
+          DIM_OVERALL_LINE,
+          DIM_OVERALL_TEXT,
+          1.1,
+          11,
+          600,
+        ),
+      );
+      out.push(
+        buildDim(
+          'd-overall-h',
+          [bbox.minX, bbox.minY] as Pt,
+          [bbox.minX, bbox.maxY] as Pt,
+          [-1, 0] as Pt,
+          overallOff,
+          formatDimension(bbox.maxY - bbox.minY, unit, true),
+          toScreen,
+          terminator,
+          DIM_OVERALL_LINE,
+          DIM_OVERALL_TEXT,
+          1.1,
+          11,
+          600,
         ),
       );
     }
 
-    // Overall bounding dimensions on an OUTER chain (larger offset).
-    out.push(
-      buildDim(
-        'd-overall-w',
-        [bbox.minX, bbox.maxY] as Pt,
-        [bbox.maxX, bbox.maxY] as Pt,
-        [0, 1] as Pt,
-        overallOff,
-        formatDimension(bbox.maxX - bbox.minX, unit, true),
-        toScreen,
-        terminator,
-        DIM_OVERALL_LINE,
-        DIM_OVERALL_TEXT,
-        1.1,
-        11,
-        600,
-      ),
-    );
-    out.push(
-      buildDim(
-        'd-overall-h',
-        [bbox.minX, bbox.minY] as Pt,
-        [bbox.minX, bbox.maxY] as Pt,
-        [-1, 0] as Pt,
-        overallOff,
-        formatDimension(bbox.maxY - bbox.minY, unit, true),
-        toScreen,
-        terminator,
-        DIM_OVERALL_LINE,
-        DIM_OVERALL_TEXT,
-        1.1,
-        11,
-        600,
-      ),
-    );
-
     return out;
-  }, [sides, bbox, assignMap, borderTypeMap, inset, toScreen, show, unit, terminator]);
+  }, [sides, bbox, assignMap, borderTypeMap, inset, toScreen, showEdges, showOverall, unit, terminator]);
 
   return <g style={{ pointerEvents: 'none' }}>{nodes}</g>;
 });
@@ -636,6 +642,34 @@ const PostDimensionsLayer = memo(function PostDimensionsLayer({
           ),
         );
       }
+
+      // Inward setback annotation: when the post is set back from the edge by a
+      // margin, draw a small dimension along the INWARD normal from the edge
+      // line to the post's outer face, shifted laterally (along the edge) so it
+      // clears the post footprint.
+      const setback = ps.post.margin ?? 0;
+      if (setback > 0.01) {
+        const edgePt: Pt = [side.a[0] + ux * pos, side.a[1] + uy * pos];
+        const outerFace: Pt = [edgePt[0] + inward[0] * setback, edgePt[1] + inward[1] * setback];
+        const along: Pt = [ux, uy]; // lateral offset direction (along the edge)
+        out.push(
+          buildDim(
+            `pd-${ps.post.id}-m`,
+            edgePt,
+            outerFace,
+            along,
+            hw + 8,
+            formatDimension(setback, unit, true),
+            toScreen,
+            terminator,
+            DIM_LINE,
+            DIM_TEXT,
+            0.85,
+            10,
+            400,
+          ),
+        );
+      }
     }
     return out;
   }, [posts, sideMap, toScreen, show, unit, terminator]);
@@ -697,12 +731,137 @@ export const DeckCanvas = memo(function DeckCanvas({
   const [showGrid, setShowGrid] = useState(true);
   const [showBorders, setShowBorders] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [showEdgeDims, setShowEdgeDims] = useState(true);
+  const [showOverallDims, setShowOverallDims] = useState(true);
+  const [showPostDims, setShowPostDims] = useState(true);
   const [showPattern, setShowPattern] = useState(true);
   const [terminator, setTerminator] = useState<Terminator>('tick');
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
   const [brush, setBrush] = useState<Brush>({
     kind: 'border',
     borderTypeId: project.borderTypes[0]?.id ?? null,
   });
+
+  // Refs mirror zoom/pan so the non-passive wheel handler reads the latest
+  // values without re-subscribing (avoids stale-closure bugs).
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const zoomRef = useRef(zoom);
+  const panRef = useRef(pan);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+  useEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
+
+  // Drag-to-pan bookkeeping. `moved` distinguishes a pan-drag from a click so
+  // side hit-lines still fire on a genuine click.
+  const dragRef = useRef<{ active: boolean; startX: number; startY: number; panX: number; panY: number; moved: boolean }>(
+    { active: false, startX: 0, startY: 0, panX: 0, panY: 0, moved: false },
+  );
+
+  const ZOOM_MIN = 0.25;
+  const ZOOM_MAX = 6;
+  const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+
+  // Zoom about the viewport center, keeping that point fixed on screen.
+  const zoomAboutCenter = useCallback((factor: number) => {
+    const el = viewportRef.current;
+    const z = zoomRef.current;
+    const p = panRef.current;
+    const z2 = clampZoom(z * factor);
+    if (z2 === z) return;
+    const rect = el?.getBoundingClientRect();
+    const cx = rect ? rect.width / 2 : 0;
+    const cy = rect ? rect.height / 2 : 0;
+    const panX2 = cx - (cx - p.x) * (z2 / z);
+    const panY2 = cy - (cy - p.y) * (z2 / z);
+    setZoom(z2);
+    setPan({ x: panX2, y: panY2 });
+  }, []);
+
+  const fitView = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Non-passive wheel listener for Ctrl/Cmd + wheel zoom toward the cursor.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return; // let normal wheel scroll pass
+      e.preventDefault();
+      const z = zoomRef.current;
+      const p = panRef.current;
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      const z2 = clampZoom(z * factor);
+      if (z2 === z) return;
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const panX2 = cx - (cx - p.x) * (z2 / z);
+      const panY2 = cy - (cy - p.y) * (z2 / z);
+      setZoom(z2);
+      setPan({ x: panX2, y: panY2 });
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
+
+  const onViewportPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    dragRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      panX: panRef.current.x,
+      panY: panRef.current.y,
+      moved: false,
+    };
+  }, []);
+
+  const onViewportPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) > 4) {
+      d.moved = true;
+      setDragging(true);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (d.moved) {
+      setPan({ x: d.panX + dx, y: d.panY + dy });
+    }
+  }, []);
+
+  const onViewportPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    d.active = false;
+    setDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // If the drag actually moved, swallow the click so it doesn't reach the side
+  // hit-lines; a stationary click passes through to place border/cut/post.
+  const onViewportClickCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    if (dragRef.current.moved) {
+      e.stopPropagation();
+      e.preventDefault();
+      dragRef.current.moved = false;
+    }
+  }, []);
 
   const cutSides = useMemo(
     () => new Set(project.grid.cutSides ?? []),
@@ -798,6 +957,27 @@ export const DeckCanvas = memo(function DeckCanvas({
         <Toggle label="Pattern" on={showPattern} set={setShowPattern} />
         <Toggle label="Borders" on={showBorders} set={setShowBorders} />
         <Toggle label="Dimensions" on={showLabels} set={setShowLabels} />
+        <span className="flex items-center gap-1" title="Which dimension categories to show">
+          {([
+            ['Edges', showEdgeDims, setShowEdgeDims] as const,
+            ['Overall', showOverallDims, setShowOverallDims] as const,
+            ['Posts', showPostDims, setShowPostDims] as const,
+          ]).map(([lbl, on, set]) => (
+            <button
+              key={lbl}
+              aria-label={lbl}
+              onClick={() => set(!on)}
+              disabled={!showLabels}
+              className={`rounded border px-2 py-0.5 ${
+                on
+                  ? 'border-slate-500 bg-slate-200 font-semibold text-slate-700'
+                  : 'border-slate-300 text-slate-600'
+              } ${!showLabels ? 'opacity-40' : ''}`}
+            >
+              {lbl}
+            </button>
+          ))}
+        </span>
         <span className="flex items-center gap-1" title="Dimension terminator style">
           <button
             onClick={() => setTerminator('tick')}
@@ -823,6 +1003,30 @@ export const DeckCanvas = memo(function DeckCanvas({
           </button>
         </span>
         <span className="ml-auto flex items-center gap-3">
+          <span className="flex items-center gap-1" title="Zoom">
+            <button
+              onClick={() => zoomAboutCenter(1 / 1.2)}
+              className="rounded border border-slate-300 px-2 py-0.5 text-slate-600"
+              aria-label="Zoom out"
+            >
+              {'\u2212'}
+            </button>
+            <span className="w-10 text-center tabular-nums text-slate-600">{`${Math.round(zoom * 100)}%`}</span>
+            <button
+              onClick={() => zoomAboutCenter(1.2)}
+              className="rounded border border-slate-300 px-2 py-0.5 text-slate-600"
+              aria-label="Zoom in"
+            >
+              +
+            </button>
+            <button
+              onClick={fitView}
+              className="rounded border border-slate-300 px-2 py-0.5 text-slate-600"
+              aria-label="Fit"
+            >
+              Fit
+            </button>
+          </span>
           <Legend swatch={FULL_FILL} stroke={FULL_STROKE} label="Full tile" />
           <Legend swatch={CUT_FILL} stroke={CUT_STROKE} label="Cut tile" />
         </span>
@@ -885,13 +1089,22 @@ export const DeckCanvas = memo(function DeckCanvas({
         <span className="text-slate-400">then click any side on the diagram.</span>
       </div>
 
-      <div className="flex-1 overflow-auto bg-slate-50 p-4">
-        <svg
-          width={width}
-          height={height}
-          viewBox={`0 0 ${width} ${height}`}
-          className="mx-auto block bg-white shadow-sm"
-        >
+      <div
+        ref={viewportRef}
+        className={`flex-1 overflow-hidden bg-slate-50 p-4 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onPointerDown={onViewportPointerDown}
+        onPointerMove={onViewportPointerMove}
+        onPointerUp={onViewportPointerUp}
+        onPointerCancel={onViewportPointerUp}
+        onClickCapture={onViewportClickCapture}
+      >
+        <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
+          <svg
+            width={width}
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            className="mx-auto block bg-white shadow-sm"
+          >
           {/* Deck base */}
           <path d={deckPath} fill={DECK_FILL} stroke="#94a3b8" strokeWidth={1.5} fillRule="evenodd" />
 
@@ -946,7 +1159,8 @@ export const DeckCanvas = memo(function DeckCanvas({
             borderTypeMap={borderTypeMap}
             inset={computed.inset}
             toScreen={toScreen}
-            show={showLabels}
+            showEdges={showLabels && showEdgeDims}
+            showOverall={showLabels && showOverallDims}
             unit={unit}
             terminator={terminator}
           />
@@ -956,7 +1170,7 @@ export const DeckCanvas = memo(function DeckCanvas({
             posts={computed.posts.shapes}
             sideMap={sideMap}
             toScreen={toScreen}
-            show={showLabels}
+            show={showLabels && showPostDims}
             unit={unit}
             terminator={terminator}
           />
@@ -1051,6 +1265,7 @@ export const DeckCanvas = memo(function DeckCanvas({
             onRemovePost={onRemovePost}
           />
         </svg>
+        </div>
       </div>
     </div>
   );
