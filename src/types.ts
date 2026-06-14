@@ -1,6 +1,6 @@
 // Core domain types. All spatial values are stored in the base unit: INCHES.
 
-export type Unit = 'in' | 'ft' | 'cm' | 'mm';
+export type Unit = 'in' | 'ft' | 'cm' | 'mm' | 'm';
 
 export interface RectOp {
   id: string;
@@ -54,6 +54,11 @@ export interface Post {
   sideId: string;
   /** Distance (inches) from the side's endpoint a, measured along the side. */
   pos: number;
+  /**
+   * Inward setback (inches) from the edge/border line to the post's outer face.
+   * 0 (default) means the post sits flush against the edge.
+   */
+  margin?: number;
 }
 
 export interface GridConfig {

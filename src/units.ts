@@ -6,6 +6,7 @@ export const TO_INCHES: Record<Unit, number> = {
   ft: 12,
   cm: 1 / 2.54,
   mm: 1 / 25.4,
+  m: 1000 / 25.4,
 };
 
 export const UNIT_LABELS: Record<Unit, string> = {
@@ -13,6 +14,7 @@ export const UNIT_LABELS: Record<Unit, string> = {
   ft: 'ft',
   cm: 'cm',
   mm: 'mm',
+  m: 'm',
 };
 
 export function toInches(value: number, unit: Unit): number {
