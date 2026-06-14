@@ -1,10 +1,11 @@
 import { memo, useMemo, useState } from 'react';
+import type { ReactElement } from 'react';
 import type { Computed } from '../compute';
 import type { Project, Unit } from '../types';
 import type { MultiPoly, Pt } from '../geometry/polygon';
 import type { Side } from '../geometry/sides';
 import { cellOrientation } from '../geometry/pattern';
-import { fromInches, roundDisplay, UNIT_LABELS } from '../units';
+import { formatDimension, fromInches, roundDisplay, UNIT_LABELS } from '../units';
 
 const FULL_FILL = '#d1fae5';
 const FULL_STROKE = '#34d399';
@@ -40,6 +41,7 @@ type PostShapes = Computed['posts']['shapes'];
 type AssignMap = Map<string, string | null>;
 type BorderTypeMap = Map<string, Project['borderTypes'][number]>;
 type SideMap = Map<string, Side>;
+type BBox = Computed['bbox'];
 
 function makeFmt(unit: Unit) {
   return (lenInches: number) =>
@@ -292,55 +294,263 @@ const CornersLayer = memo(function CornersLayer({
   return <>{nodes}</>;
 });
 
-const LabelsLayer = memo(function LabelsLayer({
+// --- Architectural dimension annotations (AIA / ANSI Y14.2 style) -------------
+// Extension (witness) lines, an offset dimension line parallel to the edge,
+// tick/arrow terminators, and rotated, legible text. All terminator/gap/text
+// metrics are in SCREEN pixels; the dimension-line OFFSET is in world inches so
+// it can clear the border face. Pure (no hover state) -> safe to memoize.
+
+type Terminator = 'tick' | 'arrow';
+
+const DIM_LINE = '#475569'; // slate-600 (per-edge)
+const DIM_TEXT = '#334155'; // slate-700
+const DIM_OVERALL_LINE = '#334155'; // slate-700 (overall chain, slightly heavier)
+const DIM_OVERALL_TEXT = '#1e293b'; // slate-800
+
+const EXT_GAP = 3; // gap between geometry and start of extension line (px)
+const EXT_OVER = 3; // overshoot of extension line past the dimension line (px)
+const TICK_LEN = 10; // length of a 45deg architectural tick (px)
+const ARROW_LEN = 9; // engineering arrowhead length (px)
+const ARROW_HALF = 3; // engineering arrowhead half-width (px)
+const TEXT_NUDGE = 11; // outward nudge of text above the dimension line (px)
+
+function unitVec(from: Pt, to: Pt): Pt {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const m = Math.hypot(dx, dy) || 1;
+  return [dx / m, dy / m];
+}
+
+// 45deg slash centered on the dimension line at point P.
+function tickMark(P: Pt, dl: Pt, color: string, sw: number, key: string): ReactElement {
+  const c = Math.SQRT1_2; // cos45 == sin45
+  const tx = dl[0] * c - dl[1] * c;
+  const ty = dl[0] * c + dl[1] * c;
+  const h = TICK_LEN / 2;
+  return (
+    <line
+      key={key}
+      x1={P[0] - tx * h}
+      y1={P[1] - ty * h}
+      x2={P[0] + tx * h}
+      y2={P[1] + ty * h}
+      stroke={color}
+      strokeWidth={sw}
+    />
+  );
+}
+
+// Filled triangle with its tip at P pointing outward along d (toward the witness line).
+function arrowMark(P: Pt, d: Pt, color: string, key: string): ReactElement {
+  const perp: Pt = [-d[1], d[0]];
+  const bx = P[0] - d[0] * ARROW_LEN;
+  const by = P[1] - d[1] * ARROW_LEN;
+  const p1x = bx + perp[0] * ARROW_HALF;
+  const p1y = by + perp[1] * ARROW_HALF;
+  const p2x = bx - perp[0] * ARROW_HALF;
+  const p2y = by - perp[1] * ARROW_HALF;
+  return (
+    <polygon
+      key={key}
+      points={`${P[0].toFixed(2)},${P[1].toFixed(2)} ${p1x.toFixed(2)},${p1y.toFixed(2)} ${p2x.toFixed(2)},${p2y.toFixed(2)}`}
+      fill={color}
+    />
+  );
+}
+
+// Build a single dimension annotation between world points aW/bW, with the
+// dimension line offset `off` inches along the `outward` unit normal.
+function buildDim(
+  key: string,
+  aW: Pt,
+  bW: Pt,
+  outward: Pt,
+  off: number,
+  label: string,
+  toScreen: ToScreen,
+  terminator: Terminator,
+  lineColor: string,
+  textColor: string,
+  strokeW: number,
+  fontSize: number,
+  fontWeight: number,
+): ReactElement {
+  const aOut: Pt = [aW[0] + outward[0] * off, aW[1] + outward[1] * off];
+  const bOut: Pt = [bW[0] + outward[0] * off, bW[1] + outward[1] * off];
+  const sa = toScreen(aW);
+  const sb = toScreen(bW);
+  const sAo = toScreen(aOut);
+  const sBo = toScreen(bOut);
+  const ea = unitVec(sa, sAo); // outward (perpendicular) direction in screen px
+  const eb = unitVec(sb, sBo);
+  const dl = unitVec(sAo, sBo); // along the dimension line
+
+  const mid: Pt = [(sAo[0] + sBo[0]) / 2, (sAo[1] + sBo[1]) / 2];
+  const tn: Pt = [mid[0] + ea[0] * TEXT_NUDGE, mid[1] + ea[1] * TEXT_NUDGE];
+
+  let angle = (Math.atan2(dl[1], dl[0]) * 180) / Math.PI;
+  if (angle >= 90) angle -= 180;
+  else if (angle < -90) angle += 180;
+
+  const tw = label.length * fontSize * 0.6 + 8;
+  const th = fontSize + 6;
+
+  return (
+    <g key={key}>
+      {/* extension (witness) lines */}
+      <line
+        x1={sa[0] + ea[0] * EXT_GAP}
+        y1={sa[1] + ea[1] * EXT_GAP}
+        x2={sAo[0] + ea[0] * EXT_OVER}
+        y2={sAo[1] + ea[1] * EXT_OVER}
+        stroke={lineColor}
+        strokeWidth={strokeW}
+      />
+      <line
+        x1={sb[0] + eb[0] * EXT_GAP}
+        y1={sb[1] + eb[1] * EXT_GAP}
+        x2={sBo[0] + eb[0] * EXT_OVER}
+        y2={sBo[1] + eb[1] * EXT_OVER}
+        stroke={lineColor}
+        strokeWidth={strokeW}
+      />
+      {/* dimension line */}
+      <line x1={sAo[0]} y1={sAo[1]} x2={sBo[0]} y2={sBo[1]} stroke={lineColor} strokeWidth={strokeW} />
+      {/* terminators */}
+      {terminator === 'tick' ? (
+        <>
+          {tickMark(sAo, dl, lineColor, strokeW, `${key}-ta`)}
+          {tickMark(sBo, dl, lineColor, strokeW, `${key}-tb`)}
+        </>
+      ) : (
+        <>
+          {arrowMark(sAo, [-dl[0], -dl[1]], lineColor, `${key}-aa`)}
+          {arrowMark(sBo, dl, lineColor, `${key}-ab`)}
+        </>
+      )}
+      {/* rotated text with a white backing rect */}
+      <g transform={`translate(${tn[0].toFixed(2)},${tn[1].toFixed(2)}) rotate(${angle.toFixed(2)})`}>
+        <rect
+          x={-tw / 2}
+          y={-th / 2}
+          width={tw}
+          height={th}
+          rx={2}
+          fill="white"
+          fillOpacity={0.9}
+          stroke="#e2e8f0"
+        />
+        <text
+          x={0}
+          y={0}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={fontSize}
+          fontWeight={fontWeight}
+          fill={textColor}
+        >
+          {label}
+        </text>
+      </g>
+    </g>
+  );
+}
+
+const DimensionsLayer = memo(function DimensionsLayer({
   sides,
+  bbox,
   assignMap,
   borderTypeMap,
   inset,
   toScreen,
-  showLabels,
+  show,
   unit,
+  terminator,
 }: {
   sides: Sides;
+  bbox: BBox;
   assignMap: AssignMap;
   borderTypeMap: BorderTypeMap;
   inset: boolean;
   toScreen: ToScreen;
-  showLabels: boolean;
+  show: boolean;
   unit: Unit;
+  terminator: Terminator;
 }) {
   const nodes = useMemo(() => {
-    if (!showLabels) return null;
-    const fmt = makeFmt(unit);
-    return sides.map((side) => {
+    if (!show) return null;
+    let maxFace = 0;
+    for (const t of borderTypeMap.values()) maxFace = Math.max(maxFace, t.faceWidth);
+    const overallOff = maxFace + 46;
+
+    const out: ReactElement[] = [];
+
+    // Per-edge dimensions: each placed along its own outward normal so the
+    // L-shape's reflex corner is handled naturally.
+    for (const side of sides) {
       const assigned = assignMap.get(side.id);
       const t = assigned ? borderTypeMap.get(assigned) : null;
       const face = t?.faceWidth ?? 0;
-      const off = (inset ? 0 : face) + 22;
-      const lx = side.mid[0] + side.outward[0] * off;
-      const ly = side.mid[1] + side.outward[1] * off;
-      const [sx, sy] = toScreen([lx, ly]);
-      const label = fmt(side.length);
-      return (
-        <g key={`l-${side.id}`} style={{ pointerEvents: 'none' }}>
-          <rect
-            x={sx - label.length * 3.4 - 4}
-            y={sy - 9}
-            width={label.length * 6.8 + 8}
-            height={18}
-            rx={3}
-            fill="white"
-            fillOpacity={0.85}
-            stroke="#e2e8f0"
-          />
-          <text x={sx} y={sy + 4} textAnchor="middle" className="fill-slate-700" fontSize={11}>
-            {label}
-          </text>
-        </g>
+      const off = (inset ? 0 : face) + 16;
+      out.push(
+        buildDim(
+          `d-${side.id}`,
+          side.a,
+          side.b,
+          side.outward,
+          off,
+          formatDimension(side.length, unit, true),
+          toScreen,
+          terminator,
+          DIM_LINE,
+          DIM_TEXT,
+          0.85,
+          10,
+          400,
+        ),
       );
-    });
-  }, [sides, assignMap, borderTypeMap, inset, toScreen, showLabels, unit]);
-  return <>{nodes}</>;
+    }
+
+    // Overall bounding dimensions on an OUTER chain (larger offset).
+    out.push(
+      buildDim(
+        'd-overall-w',
+        [bbox.minX, bbox.maxY] as Pt,
+        [bbox.maxX, bbox.maxY] as Pt,
+        [0, 1] as Pt,
+        overallOff,
+        formatDimension(bbox.maxX - bbox.minX, unit, true),
+        toScreen,
+        terminator,
+        DIM_OVERALL_LINE,
+        DIM_OVERALL_TEXT,
+        1.1,
+        11,
+        600,
+      ),
+    );
+    out.push(
+      buildDim(
+        'd-overall-h',
+        [bbox.minX, bbox.minY] as Pt,
+        [bbox.minX, bbox.maxY] as Pt,
+        [-1, 0] as Pt,
+        overallOff,
+        formatDimension(bbox.maxY - bbox.minY, unit, true),
+        toScreen,
+        terminator,
+        DIM_OVERALL_LINE,
+        DIM_OVERALL_TEXT,
+        1.1,
+        11,
+        600,
+      ),
+    );
+
+    return out;
+  }, [sides, bbox, assignMap, borderTypeMap, inset, toScreen, show, unit, terminator]);
+
+  return <g style={{ pointerEvents: 'none' }}>{nodes}</g>;
 });
 
 const PostsLayer = memo(function PostsLayer({
@@ -398,6 +608,7 @@ export const DeckCanvas = memo(function DeckCanvas({
   const [showBorders, setShowBorders] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [showPattern, setShowPattern] = useState(true);
+  const [terminator, setTerminator] = useState<Terminator>('tick');
   const [brush, setBrush] = useState<Brush>({
     kind: 'border',
     borderTypeId: project.borderTypes[0]?.id ?? null,
@@ -435,7 +646,7 @@ export const DeckCanvas = memo(function DeckCanvas({
   const layout = useMemo(() => {
     const { bbox } = computed;
     const maxFace = project.borderTypes.reduce((mx, t) => Math.max(mx, t.faceWidth), 0);
-    const margin = maxFace + 28; // world units (inches) for borders + labels
+    const margin = maxFace + 72; // world inches: borders + per-edge dims + outer overall chain + text
     const worldW = bbox.maxX - bbox.minX + margin * 2;
     const worldH = bbox.maxY - bbox.minY + margin * 2;
     const targetW = 820;
@@ -480,6 +691,30 @@ export const DeckCanvas = memo(function DeckCanvas({
         <Toggle label="Pattern" on={showPattern} set={setShowPattern} />
         <Toggle label="Borders" on={showBorders} set={setShowBorders} />
         <Toggle label="Dimensions" on={showLabels} set={setShowLabels} />
+        <span className="flex items-center gap-1" title="Dimension terminator style">
+          <button
+            onClick={() => setTerminator('tick')}
+            disabled={!showLabels}
+            className={`rounded border px-2 py-0.5 ${
+              terminator === 'tick'
+                ? 'border-slate-500 bg-slate-200 font-semibold text-slate-700'
+                : 'border-slate-300 text-slate-600'
+            } ${!showLabels ? 'opacity-40' : ''}`}
+          >
+            Tick
+          </button>
+          <button
+            onClick={() => setTerminator('arrow')}
+            disabled={!showLabels}
+            className={`rounded border px-2 py-0.5 ${
+              terminator === 'arrow'
+                ? 'border-slate-500 bg-slate-200 font-semibold text-slate-700'
+                : 'border-slate-300 text-slate-600'
+            } ${!showLabels ? 'opacity-40' : ''}`}
+          >
+            Arrow
+          </button>
+        </span>
         <span className="ml-auto flex items-center gap-3">
           <Legend swatch={FULL_FILL} stroke={FULL_STROKE} label="Full tile" />
           <Legend swatch={CUT_FILL} stroke={CUT_STROKE} label="Cut tile" />
@@ -596,15 +831,17 @@ export const DeckCanvas = memo(function DeckCanvas({
             showBorders={showBorders}
           />
 
-          {/* Dimension labels per side */}
-          <LabelsLayer
+          {/* Architectural dimension annotations (per-edge + overall) */}
+          <DimensionsLayer
             sides={computed.shape.sides}
+            bbox={bbox}
             assignMap={assignMap}
             borderTypeMap={borderTypeMap}
             inset={computed.inset}
             toScreen={toScreen}
-            showLabels={showLabels}
+            show={showLabels}
             unit={unit}
+            terminator={terminator}
           />
 
           {/* Interactive side hit-targets, hover highlight, and numbered badges */}
