@@ -80,10 +80,11 @@ export interface Project {
   grid: GridConfig;
   /**
    * Tile layout pattern:
+   *  - 'none': no slat pattern is drawn (plain tiles).
    *  - 'uniform': every tile shares the same grain direction.
    *  - 'checkerboard': grain rotates 90deg on every tile (by (col+row) parity).
    */
-  layoutPattern: 'uniform' | 'checkerboard';
+  layoutPattern: 'none' | 'uniform' | 'checkerboard';
   /** Grain direction of the even/origin tile. */
   grainDirection: 'horizontal' | 'vertical';
   /**
