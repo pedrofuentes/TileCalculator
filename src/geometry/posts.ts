@@ -56,9 +56,10 @@ export function buildPostShapes(
     const cy = side.a[1] + uy * pos;
     const hw = type.width / 2;
     const d = type.depth;
+    const m = post.margin ?? 0;
 
-    const p1: Pt = [cx - ux * hw, cy - uy * hw];
-    const p2: Pt = [cx + ux * hw, cy + uy * hw];
+    const p1: Pt = [cx - ux * hw + ix * m, cy - uy * hw + iy * m];
+    const p2: Pt = [cx + ux * hw + ix * m, cy + uy * hw + iy * m];
     const p3: Pt = [p2[0] + ix * d, p2[1] + iy * d];
     const p4: Pt = [p1[0] + ix * d, p1[1] + iy * d];
     const ring: Ring = [p1, p2, p3, p4, p1];
@@ -67,7 +68,7 @@ export function buildPostShapes(
       post,
       type,
       ring,
-      center: [cx + (ix * d) / 2, cy + (iy * d) / 2],
+      center: [cx + ix * (m + d / 2), cy + iy * (m + d / 2)],
       angleDeg: (Math.atan2(uy, ux) * 180) / Math.PI,
     });
     rings.push([ring]);

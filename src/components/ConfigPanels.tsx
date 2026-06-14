@@ -5,7 +5,7 @@ import { fromInches, roundDisplay, UNIT_LABELS } from '../units';
 import { uid } from '../state/defaults';
 import { Field, LengthInput, NumberBox, Section } from './ui';
 
-const UNITS: Unit[] = ['in', 'ft', 'cm', 'mm'];
+const UNITS: Unit[] = ['in', 'ft', 'cm', 'mm', 'm'];
 
 function UnitSelectorImpl({ unit, onChange }: { unit: Unit; onChange: (u: Unit) => void }) {
   return (
@@ -414,31 +414,44 @@ function PlacedPostsPanelImpl({
                     const gapStart = p.pos - w / 2;
                     const gapEnd = len - p.pos - w / 2;
                     return (
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="flex min-w-0 items-center gap-1 text-[10px] text-slate-400">
+                            start
+                            <LengthInput
+                              valueInches={gapStart}
+                              unit={unit}
+                              min={0}
+                              fullWidth
+                              ariaLabel="Gap from start"
+                              onChange={(v) =>
+                                onUpdate(p.id, { pos: clampPos(Math.max(0, v) + w / 2) })
+                              }
+                            />
+                          </label>
+                          <label className="flex min-w-0 items-center gap-1 text-[10px] text-slate-400">
+                            end
+                            <LengthInput
+                              valueInches={gapEnd}
+                              unit={unit}
+                              min={0}
+                              fullWidth
+                              ariaLabel="Gap from end"
+                              onChange={(v) =>
+                                onUpdate(p.id, { pos: clampPos(len - Math.max(0, v) - w / 2) })
+                              }
+                            />
+                          </label>
+                        </div>
                         <label className="flex min-w-0 items-center gap-1 text-[10px] text-slate-400">
-                          start
+                          setback
                           <LengthInput
-                            valueInches={gapStart}
+                            valueInches={p.margin ?? 0}
                             unit={unit}
                             min={0}
                             fullWidth
-                            ariaLabel="Gap from start"
-                            onChange={(v) =>
-                              onUpdate(p.id, { pos: clampPos(Math.max(0, v) + w / 2) })
-                            }
-                          />
-                        </label>
-                        <label className="flex min-w-0 items-center gap-1 text-[10px] text-slate-400">
-                          end
-                          <LengthInput
-                            valueInches={gapEnd}
-                            unit={unit}
-                            min={0}
-                            fullWidth
-                            ariaLabel="Gap from end"
-                            onChange={(v) =>
-                              onUpdate(p.id, { pos: clampPos(len - Math.max(0, v) - w / 2) })
-                            }
+                            ariaLabel="Setback from edge"
+                            onChange={(v) => onUpdate(p.id, { margin: Math.max(0, v) })}
                           />
                         </label>
                       </div>
@@ -452,6 +465,7 @@ function PlacedPostsPanelImpl({
       )}
       <p className="text-xs text-slate-400">
         "start"/"end" are the clear gaps from each corner to the post's nearest face.
+        "setback" sets the post back inward from the edge/border (0 = flush).
         Hover a row to highlight its side.
       </p>
     </Section>
