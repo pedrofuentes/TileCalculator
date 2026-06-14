@@ -23,13 +23,9 @@ npm run preview        # serve the production build
 npx tsc --noEmit       # fast type-check without emitting (authoritative green gate)
 ```
 
-- **Green gates:** `npx tsc --noEmit` and `npm run build` must pass. Treat these as the
-  source of truth for "does it compile".
-- **Lint caveat:** `npm run lint` currently reports a few **pre-existing** issues (e.g.
-  `react-hooks/set-state-in-effect` in `src/components/ui.tsx`, and intentional
-  `react-hooks/exhaustive-deps` warnings in `src/render/DeckCanvas.tsx` where `project` is
-  deliberately excluded). Do not "fix" these as a side effect of unrelated work; do not
-  introduce *new* lint errors.
+- **Green gates:** `npx tsc --noEmit`, `npm run build`, and `npm run lint` must all pass
+  (lint currently reports **0 problems**). Treat these as the source of truth for "is it
+  healthy". Don't introduce new lint errors or warnings.
 
 ## Verification convention (no test suite)
 
