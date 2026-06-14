@@ -89,9 +89,9 @@ export function LengthInput({
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
-        className={`${fullWidth ? 'w-full min-w-0' : 'w-24'} rounded border border-slate-300 px-2 py-1 text-right text-sm focus:border-sky-500 focus:outline-none ${className}`}
+        className={`${fullWidth ? 'w-full min-w-0' : 'w-20'} rounded border border-slate-300 px-2 py-1 text-right text-sm focus:border-sky-500 focus:outline-none ${className}`}
       />
-      <span className="w-6 text-xs text-slate-400">{UNIT_LABELS[unit]}</span>
+      <span className="w-5 text-xs text-slate-400">{UNIT_LABELS[unit]}</span>
     </span>
   );
 }
