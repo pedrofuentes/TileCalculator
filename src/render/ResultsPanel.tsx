@@ -68,6 +68,15 @@ export const ResultsPanel = memo(function ResultsPanel({ computed, unit }: { com
             }
           />
         </div>
+        <div className="rounded-lg border border-sky-200 bg-sky-50 p-2">
+          <div className="text-xs text-sky-700">Recommended order</div>
+          <div className="text-lg font-semibold text-sky-800">
+            {Math.ceil(tiles.safePurchase * 1.1)}
+          </div>
+          <div className="text-xs text-sky-600">
+            +10% waste/contingency (industry standard for straight/grid layouts)
+          </div>
+        </div>
         {tiles.interlockReuse ? (
           <>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -195,6 +204,17 @@ export const ResultsPanel = memo(function ResultsPanel({ computed, unit }: { com
             </p>
           </>
         )}
+      </Section>
+
+      <Section title="Disclaimer">
+        <p className="text-xs text-slate-500">
+          <strong className="text-slate-600">All dimensions, tile/border/post counts, and the cut
+          list are referential estimates only</strong>, generated from the entered measurements.
+          Field conditions vary &mdash; verify all dimensions with on-site measurements as
+          installation proceeds. Order approximately 10% extra material as a waste/contingency
+          allowance (about 15% for diagonal or complex layouts) to cover miscuts, breakage, and
+          future repairs.
+        </p>
       </Section>
     </div>
   );
