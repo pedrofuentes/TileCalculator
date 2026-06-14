@@ -3,6 +3,7 @@ import type { Computed } from '../compute';
 import type { Project, Unit } from '../types';
 import type { MultiPoly, Pt } from '../geometry/polygon';
 import type { Side } from '../geometry/sides';
+import { cellOrientation } from '../geometry/pattern';
 import { fromInches, roundDisplay, UNIT_LABELS } from '../units';
 
 const FULL_FILL = '#d1fae5';
@@ -10,6 +11,7 @@ const FULL_STROKE = '#34d399';
 const CUT_FILL = '#fdba74';
 const CUT_STROKE = '#ea580c';
 const DECK_FILL = '#e2e8f0';
+const SLAT_STROKE = '#059669';
 
 interface Props {
   computed: Computed;
@@ -110,6 +112,79 @@ const TileLayer = memo(function TileLayer({
       );
     });
   }, [cells, toScreen, scale, tile, showGrid, unit]);
+  return <>{nodes}</>;
+});
+
+// Slat / wood-stripe overlay. Each tile is split into `tile.slats` parallel
+// planks along its grain; we draw the `slats - 1` divider lines between them.
+// Orientation is per-cell via cellOrientation; cut tiles are clipped to their
+// covered region. Kept independent of hover state so it never re-renders on hover.
+const PatternLayer = memo(function PatternLayer({
+  cells,
+  toScreen,
+  scale,
+  tile,
+  layoutPattern,
+  grainDirection,
+  showPattern,
+}: {
+  cells: Cells;
+  toScreen: ToScreen;
+  scale: number;
+  tile: Project['tile'];
+  layoutPattern: Project['layoutPattern'];
+  grainDirection: Project['grainDirection'];
+  showPattern: boolean;
+}) {
+  const nodes = useMemo(() => {
+    if (!showPattern || !tile.directional) return null;
+    const slats = Math.max(1, Math.floor(tile.slats));
+    if (slats < 2) return null; // a single slat has no divider lines
+    const w = tile.width * scale;
+    const h = tile.height * scale;
+    const out: React.ReactNode[] = [];
+    for (const cell of cells) {
+      const [sx, sy] = toScreen([cell.x, cell.y]);
+      const orient = cellOrientation(cell.col, cell.row, layoutPattern, grainDirection);
+      // 'h' grain => slats stacked vertically => horizontal divider lines.
+      // 'v' grain => slats side by side => vertical divider lines.
+      const lines: React.ReactNode[] = [];
+      for (let i = 1; i < slats; i++) {
+        if (orient === 'h') {
+          const y = sy + (h * i) / slats;
+          lines.push(
+            <line key={i} x1={sx} y1={y} x2={sx + w} y2={y} stroke={SLAT_STROKE} strokeWidth={0.75} strokeOpacity={0.5} />,
+          );
+        } else {
+          const x = sx + (w * i) / slats;
+          lines.push(
+            <line key={i} x1={x} y1={sy} x2={x} y2={sy + h} stroke={SLAT_STROKE} strokeWidth={0.75} strokeOpacity={0.5} />,
+          );
+        }
+      }
+      const key = `p-${cell.x},${cell.y}`;
+      if (cell.kind === 'full') {
+        out.push(
+          <g key={key} style={{ pointerEvents: 'none' }}>
+            {lines}
+          </g>,
+        );
+      } else {
+        // Clip the full-tile stripe set to the covered (cut) region.
+        const clipId = `clip-${cell.x}-${cell.y}`;
+        const covered = multiPolyToPath(cell.covered, toScreen);
+        out.push(
+          <g key={key} style={{ pointerEvents: 'none' }}>
+            <clipPath id={clipId} clipRule="evenodd">
+              <path d={covered} />
+            </clipPath>
+            <g clipPath={`url(#${clipId})`}>{lines}</g>
+          </g>,
+        );
+      }
+    }
+    return out;
+  }, [cells, toScreen, scale, tile, layoutPattern, grainDirection, showPattern]);
   return <>{nodes}</>;
 });
 
@@ -322,6 +397,7 @@ export const DeckCanvas = memo(function DeckCanvas({
   const [showGrid, setShowGrid] = useState(true);
   const [showBorders, setShowBorders] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [showPattern, setShowPattern] = useState(true);
   const [brush, setBrush] = useState<Brush>({
     kind: 'border',
     borderTypeId: project.borderTypes[0]?.id ?? null,
@@ -401,6 +477,7 @@ export const DeckCanvas = memo(function DeckCanvas({
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-3 py-2 text-xs">
         <span className="font-semibold text-slate-600">Layers:</span>
         <Toggle label="Tiles" on={showGrid} set={setShowGrid} />
+        <Toggle label="Pattern" on={showPattern} set={setShowPattern} />
         <Toggle label="Borders" on={showBorders} set={setShowBorders} />
         <Toggle label="Dimensions" on={showLabels} set={setShowLabels} />
         <span className="ml-auto flex items-center gap-3">
@@ -484,6 +561,17 @@ export const DeckCanvas = memo(function DeckCanvas({
             tile={tile}
             showGrid={showGrid}
             unit={unit}
+          />
+
+          {/* Slat / wood-grain pattern overlay (above fills, below borders) */}
+          <PatternLayer
+            cells={computed.grid.cells}
+            toScreen={toScreen}
+            scale={scale}
+            tile={tile}
+            layoutPattern={project.layoutPattern}
+            grainDirection={project.grainDirection}
+            showPattern={showPattern}
           />
 
           {/* Borders */}

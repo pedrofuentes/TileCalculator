@@ -11,6 +11,7 @@ import {
   PostTypesPanel,
   SideAssignmentPanel,
   TileConfigPanel,
+  TilePatternPanel,
   UnitSelector,
 } from './components/ConfigPanels';
 import { ProjectBar } from './components/ProjectBar';
@@ -132,6 +133,12 @@ export default function App() {
             onChange={setDimensionBasis}
           />
           <TileConfigPanel tile={project.tile} unit={project.unit} onChange={setTile} />
+          <TilePatternPanel
+            layoutPattern={project.layoutPattern}
+            grainDirection={project.grainDirection}
+            interlockReuse={project.interlockReuse}
+            onChange={patch}
+          />
           <GridControls
             grid={project.grid}
             unit={project.unit}

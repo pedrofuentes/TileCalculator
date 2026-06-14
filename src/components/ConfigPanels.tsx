@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import type { BorderType, GridConfig, Post, PostType, SideAssignment, TileConfig, Unit } from '../types';
+import type { BorderType, GridConfig, Post, PostType, Project, SideAssignment, TileConfig, Unit } from '../types';
 import type { Side } from '../geometry/sides';
 import { fromInches, roundDisplay, UNIT_LABELS } from '../units';
 import { uid } from '../state/defaults';
@@ -45,6 +45,100 @@ function TileConfigPanelImpl({
       <Field label="Gap between tiles">
         <LengthInput valueInches={tile.gap} unit={unit} min={0} onChange={(v) => onChange({ ...tile, gap: v })} />
       </Field>
+      <Field label="Slats per tile">
+        <NumberBox
+          value={tile.slats}
+          min={1}
+          step="1"
+          onChange={(v) => onChange({ ...tile, slats: Math.max(1, Math.round(v)) })}
+        />
+      </Field>
+      <Field label="Directional grain">
+        <input
+          type="checkbox"
+          checked={tile.directional}
+          onChange={(e) => onChange({ ...tile, directional: e.target.checked })}
+        />
+      </Field>
+    </Section>
+  );
+}
+
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`rounded px-2 py-1 ${
+            value === o.value ? 'bg-white font-semibold text-sky-700 shadow-sm' : 'text-slate-500'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TilePatternPanelImpl({
+  layoutPattern,
+  grainDirection,
+  interlockReuse,
+  onChange,
+}: {
+  layoutPattern: Project['layoutPattern'];
+  grainDirection: Project['grainDirection'];
+  interlockReuse: Project['interlockReuse'];
+  onChange: (
+    patch: Partial<Pick<Project, 'layoutPattern' | 'grainDirection' | 'interlockReuse'>>,
+  ) => void;
+}) {
+  return (
+    <Section title="Tile pattern">
+      <Field label="Layout">
+        <Segmented
+          value={layoutPattern}
+          options={[
+            { value: 'uniform', label: 'Uniform' },
+            { value: 'checkerboard', label: 'Checkerboard' },
+          ]}
+          onChange={(v) => onChange({ layoutPattern: v })}
+        />
+      </Field>
+      <Field label="Grain direction">
+        <Segmented
+          value={grainDirection}
+          options={[
+            { value: 'horizontal', label: 'Horizontal' },
+            { value: 'vertical', label: 'Vertical' },
+          ]}
+          onChange={(v) => onChange({ grainDirection: v })}
+        />
+      </Field>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={interlockReuse}
+          onChange={(e) => onChange({ interlockReuse: e.target.checked })}
+        />
+        <span>
+          <span className="font-medium text-slate-700">Tiles interlock</span>
+          <span className="block text-xs text-slate-500">
+            Limit offcut reuse with edge- &amp; grain-aware pairing (interlocking tiles).
+          </span>
+        </span>
+      </label>
     </Section>
   );
 }
@@ -531,6 +625,7 @@ export function TileGapNote() {
 
 export const UnitSelector = memo(UnitSelectorImpl);
 export const TileConfigPanel = memo(TileConfigPanelImpl);
+export const TilePatternPanel = memo(TilePatternPanelImpl);
 export const GridControls = memo(GridControlsImpl);
 export const BorderTypesPanel = memo(BorderTypesPanelImpl);
 export const PostTypesPanel = memo(PostTypesPanelImpl);
