@@ -28,6 +28,9 @@ export interface GridResult {
 
 const AREA_TOL = 1e-4;
 
+/** Minimum covered-bbox extent (inches) for a clipped cell to count as a tile. */
+const MIN_TILE_DIM = 1 / 32;
+
 /** A single ring edge plus its bbox and whether it is axis-aligned. */
 interface Edge {
   ax: number;
@@ -188,6 +191,12 @@ export function classifyGrid(
       const area = multiPolyArea(covered);
       if (area <= AREA_TOL) continue;
 
+      // Reject floating-point boundary slivers: a clipped cell whose covered
+      // bounding box is near-zero in width or height is not a real tile (it would
+      // render as "N x 0 in" and inflate cut/purchase counts).
+      const cb = multiPolyBBox(covered);
+      if (cb.maxX - cb.minX < MIN_TILE_DIM || cb.maxY - cb.minY < MIN_TILE_DIM) continue;
+
       coveredArea += area;
       if (area >= tileArea - AREA_TOL) {
         fullCount++;
@@ -206,7 +215,6 @@ export function classifyGrid(
         });
       } else {
         cutCount++;
-        const cb = multiPolyBBox(covered);
         const bboxArea = (cb.maxX - cb.minX) * (cb.maxY - cb.minY);
         cells.push({
           col,

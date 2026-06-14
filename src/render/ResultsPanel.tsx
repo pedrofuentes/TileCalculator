@@ -163,26 +163,37 @@ export const ResultsPanel = memo(function ResultsPanel({ computed, unit }: { com
         {cutList.length === 0 ? (
           <p className="text-sm text-slate-500">No cut tiles needed.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-slate-500">
-                <th className="py-1">Piece size</th>
-                <th className="text-right">Qty</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cutList.map((c, i) => (
-                <tr key={i} className="border-t border-slate-100">
-                  <td className="py-1">
-                    {roundDisplay(fromInches(c.w, unit), 2)} {'\u00d7'} {roundDisplay(fromInches(c.h, unit), 2)}{' '}
-                    {UNIT_LABELS[unit]}
-                    {c.lcut && <span className="ml-1 text-xs text-orange-500">(L-cut)</span>}
-                  </td>
-                  <td className="text-right">{c.count}</td>
+          <>
+            <p className="text-xs text-slate-400">
+              Finished pieces to cut from full tiles &mdash; one row per distinct finished size and
+              how many of that size you need. Cut these from full tiles (offcut reuse may let one
+              tile yield two pieces).
+            </p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500">
+                  <th className="py-1">Finished piece (W {'\u00d7'} H)</th>
+                  <th className="text-right">Qty</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {cutList.map((c, i) => (
+                  <tr key={i} className="border-t border-slate-100">
+                    <td className="py-1">
+                      {roundDisplay(fromInches(c.w, unit), 2)} {'\u00d7'} {roundDisplay(fromInches(c.h, unit), 2)}{' '}
+                      {UNIT_LABELS[unit]}
+                      {c.lcut && <span className="ml-1 text-xs text-orange-500">(L-cut)</span>}
+                    </td>
+                    <td className="text-right">{c.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-slate-400">
+              (L-cut) = an L-shaped piece (both dimensions reduced, e.g. an inside corner) &mdash;
+              not pairable, needs its own tile.
+            </p>
+          </>
         )}
       </Section>
     </div>
