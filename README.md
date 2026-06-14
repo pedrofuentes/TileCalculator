@@ -70,8 +70,12 @@ boolean geometry.
   `computeProject` integration. Run with `npm run test`.
 - **E2E smoke tests** (Playwright, `e2e/`) load the app and assert it mounts without hitting
   the error boundary and that unit-switch / add-rectangle don't crash. Run `npm run test:e2e`.
-- **CI** (`.github/workflows/ci.yml`) runs lint → type-check → build → unit tests → e2e on
-  every push and pull request.
+- **Coverage** (`npm run test:coverage`) is measured on the pure pipeline only
+  (`units`, `compute`, `geometry`, `calc`, `state`) — the React/SVG UI is excluded because
+  it's covered by the e2e smoke. The suite currently sits at **~99% lines / 93% branches**
+  and CI enforces thresholds (95% lines/statements/functions, 90% branches).
+- **CI** (`.github/workflows/ci.yml`) runs lint → type-check → build → tests+coverage → e2e
+  on every push and pull request.
 - A **pre-commit hook** (husky + lint-staged) runs ESLint on staged files and the unit tests
   before each commit.
 

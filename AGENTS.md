@@ -20,14 +20,22 @@ npm run dev            # Vite dev server on http://localhost:5173
 npm run build          # tsc -b && vite build  -> dist/   (authoritative green gate)
 npm run lint           # eslint
 npm run test           # vitest unit/integration tests (green gate)
+npm run test:coverage  # vitest with v8 coverage + thresholds (green gate)
 npm run test:e2e       # playwright e2e smoke tests
 npm run preview        # serve the production build
 npx tsc --noEmit       # fast type-check without emitting (authoritative green gate)
 ```
 
-- **Green gates:** `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `npm run test`
-  must all pass (lint currently reports **0 problems**). Treat these as the source of truth
-  for "is it healthy". Don't introduce new lint errors or warnings.
+- **Green gates:** `npm run lint`, `npx tsc --noEmit`, `npm run build`, and
+  `npm run test:coverage` must all pass (lint reports **0 problems**). Treat these as the
+  source of truth for "is it healthy". Don't introduce new lint errors or warnings.
+- **Coverage gate:** measured on the pure pipeline only — `coverage.include` in
+  `vitest.config.ts` is `units`, `compute`, `geometry/**`, `calc/**`, `state/**`; the
+  React/SVG UI is excluded (covered by the e2e smoke). Thresholds: **95% lines/statements/
+  functions, 90% branches** (suite currently ~99% lines / 93% branch). **When you add logic
+  to the pure pipeline, add tests** — colocate `*.test.ts` (or `*.cover.test.ts` for
+  coverage-targeted cases) and keep the gate green. Storage's localStorage functions are
+  tested under jsdom via a `// @vitest-environment jsdom` file.
 
 ## Verification convention
 
