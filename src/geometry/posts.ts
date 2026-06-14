@@ -56,7 +56,7 @@ export function buildPostShapes(
     const cy = side.a[1] + uy * pos;
     const hw = type.width / 2;
     const d = type.depth;
-    const m = post.margin ?? 0;
+    const m = post.margin ?? type.margin ?? 0;
 
     const p1: Pt = [cx - ux * hw + ix * m, cy - uy * hw + iy * m];
     const p2: Pt = [cx + ux * hw + ix * m, cy + uy * hw + iy * m];

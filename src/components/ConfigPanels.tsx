@@ -320,6 +320,14 @@ function PostTypesPanelImpl({
           <Field label="Depth (inward)">
             <LengthInput valueInches={t.depth} unit={unit} min={0.1} onChange={(v) => update(t.id, { depth: v })} />
           </Field>
+          <Field label="Setback (inward, default)">
+            <LengthInput
+              valueInches={t.margin ?? 0}
+              unit={unit}
+              min={0}
+              onChange={(v) => update(t.id, { margin: Math.max(0, v) })}
+            />
+          </Field>
         </div>
       ))}
     </Section>
@@ -443,17 +451,32 @@ function PlacedPostsPanelImpl({
                             />
                           </label>
                         </div>
-                        <label className="flex min-w-0 items-center gap-1 text-[10px] text-slate-400">
-                          setback
-                          <LengthInput
-                            valueInches={p.margin ?? 0}
-                            unit={unit}
-                            min={0}
-                            fullWidth
-                            ariaLabel="Setback from edge"
-                            onChange={(v) => onUpdate(p.id, { margin: Math.max(0, v) })}
-                          />
-                        </label>
+                        <div className="flex items-center gap-1">
+                          <label className="flex min-w-0 flex-1 items-center gap-1 text-[10px] text-slate-400">
+                            setback
+                            <LengthInput
+                              valueInches={p.margin ?? type?.margin ?? 0}
+                              unit={unit}
+                              min={0}
+                              fullWidth
+                              ariaLabel="Setback from edge"
+                              onChange={(v) => onUpdate(p.id, { margin: Math.max(0, v) })}
+                            />
+                          </label>
+                          {p.margin === undefined ? (
+                            <span className="shrink-0 text-[9px] text-slate-400" title="Using the post type's default setback">
+                              inherits
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => onUpdate(p.id, { margin: undefined })}
+                              title="Reset to the post type's default setback"
+                              className="shrink-0 rounded px-1 text-[10px] text-sky-600 hover:bg-sky-50"
+                            >
+                              &#8635; type
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })()
@@ -465,7 +488,8 @@ function PlacedPostsPanelImpl({
       )}
       <p className="text-xs text-slate-400">
         "start"/"end" are the clear gaps from each corner to the post's nearest face.
-        "setback" sets the post back inward from the edge/border (0 = flush).
+        "setback" sets the post back inward from the edge/border (0 = flush); it defaults to
+        the post type's setback and can be overridden per post ("&#8635; type" resets it).
         Hover a row to highlight its side.
       </p>
     </Section>

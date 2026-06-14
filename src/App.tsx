@@ -21,6 +21,8 @@ import { ResultsPanel } from './render/ResultsPanel';
 export default function App() {
   const [project, setProject] = useState<Project>(() => makeDefaultProject());
   const [hoveredSideId, setHoveredSideId] = useState<string | null>(null);
+  const [shapeEditMode, setShapeEditMode] = useState(false);
+  const [selectedRectId, setSelectedRectId] = useState<string | null>(null);
   const computed = useMemo(() => computeProject(project), [project]);
 
   const patch = useCallback(
@@ -84,6 +86,41 @@ export default function App() {
 
   const setUnit = useCallback((unit: Project['unit']) => patch({ unit }), [patch]);
   const setRects = useCallback((rects: Project['rects']) => patch({ rects }), [patch]);
+
+  const updateRect = useCallback(
+    (id: string, rectPatch: Partial<Project['rects'][number]>) =>
+      setProject((prev) => ({
+        ...prev,
+        rects: prev.rects.map((r) => (r.id === id ? { ...r, ...rectPatch } : r)),
+      })),
+    [],
+  );
+
+  // Add a rectangle at a VISIBLE offset (to the right of the current shape) so
+  // it never lands hidden inside the existing deck; auto-select it for editing.
+  const addRect = useCallback(() => {
+    const id = uid('rect');
+    setProject((prev) => {
+      const adds = prev.rects;
+      const tw = Math.max(1, prev.tile.width || 12);
+      let x = 0;
+      let y = 0;
+      let w = 60;
+      let h = 60;
+      if (adds.length > 0) {
+        const maxX = Math.max(...adds.map((r) => r.x + r.w));
+        const minY = Math.min(...adds.map((r) => r.y));
+        x = maxX;
+        y = minY;
+        w = tw;
+        h = tw;
+      }
+      return { ...prev, rects: [...prev.rects, { id, x, y, w, h, op: 'add' as const }] };
+    });
+    setSelectedRectId(id);
+    setShapeEditMode(true);
+  }, []);
+
   const setDimensionBasis = useCallback(
     (dimensionBasis: NonNullable<Project['dimensionBasis']>) => patch({ dimensionBasis }),
     [patch],
@@ -127,7 +164,14 @@ export default function App() {
       <div className="grid flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[340px_1fr_360px]">
         {/* Controls */}
         <aside className="space-y-3 overflow-y-auto border-r border-slate-200 bg-slate-50 p-3">
-          <ShapeBuilder rects={project.rects} unit={project.unit} onChange={setRects} />
+          <ShapeBuilder
+            rects={project.rects}
+            unit={project.unit}
+            onChange={setRects}
+            onAdd={addRect}
+            selectedRectId={selectedRectId}
+            onSelect={setSelectedRectId}
+          />
           <DimensionBasisPanel
             basis={project.dimensionBasis ?? 'tileField'}
             onChange={setDimensionBasis}
@@ -190,6 +234,12 @@ export default function App() {
             onToggleCutSide={toggleCutSide}
             onAddPost={addPost}
             onRemovePost={removePost}
+            shapeEditMode={shapeEditMode}
+            onSetShapeEditMode={setShapeEditMode}
+            selectedRectId={selectedRectId}
+            onSelectRect={setSelectedRectId}
+            onUpdateRect={updateRect}
+            onAddRect={addRect}
           />
         </main>
 

@@ -90,7 +90,7 @@ export function normalizeProject(p: Project): Project {
       slats: p.tile?.slats ?? 3,
       directional: p.tile?.directional ?? true,
     },
-    postTypes: p.postTypes ?? [],
+    postTypes: (p.postTypes ?? []).map((t) => ({ ...t, margin: t.margin ?? 0 })),
     posts: p.posts ?? [],
     grid: { ...p.grid, cutSides: p.grid?.cutSides ?? [] },
     layoutPattern: p.layoutPattern ?? 'checkerboard',

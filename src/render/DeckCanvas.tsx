@@ -1,11 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { Computed } from '../compute';
-import type { Project, Unit } from '../types';
+import type { Project, RectOp, Unit } from '../types';
 import type { MultiPoly, Pt } from '../geometry/polygon';
 import type { Side } from '../geometry/sides';
 import { cellOrientation } from '../geometry/pattern';
-import { formatDimension, fromInches, roundDisplay, UNIT_LABELS } from '../units';
+import { formatDimension, fromInches, roundDisplay, toInches, UNIT_LABELS } from '../units';
 
 const FULL_FILL = '#d1fae5';
 const FULL_STROKE = '#34d399';
@@ -23,6 +23,12 @@ interface Props {
   onToggleCutSide?: (sideId: string) => void;
   onAddPost?: (sideId: string, pos: number, postTypeId: string) => void;
   onRemovePost?: (id: string) => void;
+  shapeEditMode?: boolean;
+  onSetShapeEditMode?: (on: boolean) => void;
+  selectedRectId?: string | null;
+  onSelectRect?: (id: string | null) => void;
+  onUpdateRect?: (id: string, patch: Partial<RectOp>) => void;
+  onAddRect?: () => void;
 }
 
 // Active click action: assign a border type, toggle a cut side, or place a post.
@@ -32,6 +38,52 @@ type Brush =
   | { kind: 'post'; postTypeId: string };
 
 const CUT_SIDE_COLOR = '#db2777';
+
+type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+const RESIZE_HANDLES: { id: HandleId; fx: number; fy: number; cursor: string }[] = [
+  { id: 'nw', fx: 0, fy: 0, cursor: 'nwse-resize' },
+  { id: 'n', fx: 0.5, fy: 0, cursor: 'ns-resize' },
+  { id: 'ne', fx: 1, fy: 0, cursor: 'nesw-resize' },
+  { id: 'e', fx: 1, fy: 0.5, cursor: 'ew-resize' },
+  { id: 'se', fx: 1, fy: 1, cursor: 'nwse-resize' },
+  { id: 's', fx: 0.5, fy: 1, cursor: 'ns-resize' },
+  { id: 'sw', fx: 0, fy: 1, cursor: 'nesw-resize' },
+  { id: 'w', fx: 0, fy: 0.5, cursor: 'ew-resize' },
+];
+
+// Apply a move/resize drag to a rectangle, optionally snapping moved edges to a
+// grid step (snapStep <= 0 disables snapping). Returns the changed fields.
+function applyRectDrag(
+  orig: RectOp,
+  mode: HandleId | 'move',
+  dx: number,
+  dy: number,
+  snapStep: number,
+): Partial<RectOp> {
+  const sn = (v: number) => (snapStep > 0 ? Math.round(v / snapStep) * snapStep : v);
+  if (mode === 'move') {
+    return { x: sn(orig.x + dx), y: sn(orig.y + dy) };
+  }
+  let left = orig.x;
+  let right = orig.x + orig.w;
+  let top = orig.y;
+  let bottom = orig.y + orig.h;
+  if (mode.includes('w')) left = sn(orig.x + dx);
+  if (mode.includes('e')) right = sn(orig.x + orig.w + dx);
+  if (mode.includes('n')) top = sn(orig.y + dy);
+  if (mode.includes('s')) bottom = sn(orig.y + orig.h + dy);
+  const MIN = 1;
+  if (right - left < MIN) {
+    if (mode.includes('w')) left = right - MIN;
+    else right = left + MIN;
+  }
+  if (bottom - top < MIN) {
+    if (mode.includes('n')) top = bottom - MIN;
+    else bottom = top + MIN;
+  }
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
 
 type ToScreen = (p: Pt) => Pt;
 type Cells = Computed['grid']['cells'];
@@ -647,7 +699,7 @@ const PostDimensionsLayer = memo(function PostDimensionsLayer({
       // margin, draw a small dimension along the INWARD normal from the edge
       // line to the post's outer face, shifted laterally (along the edge) so it
       // clears the post footprint.
-      const setback = ps.post.margin ?? 0;
+      const setback = ps.post.margin ?? ps.type.margin ?? 0;
       if (setback > 0.01) {
         const edgePt: Pt = [side.a[0] + ux * pos, side.a[1] + uy * pos];
         const outerFace: Pt = [edgePt[0] + inward[0] * setback, edgePt[1] + inward[1] * setback];
@@ -726,6 +778,12 @@ export const DeckCanvas = memo(function DeckCanvas({
   onToggleCutSide,
   onAddPost,
   onRemovePost,
+  shapeEditMode = false,
+  onSetShapeEditMode,
+  selectedRectId = null,
+  onSelectRect,
+  onUpdateRect,
+  onAddRect,
 }: Props) {
   const { unit, tile } = project;
   const [showGrid, setShowGrid] = useState(true);
@@ -743,6 +801,8 @@ export const DeckCanvas = memo(function DeckCanvas({
     kind: 'border',
     borderTypeId: project.borderTypes[0]?.id ?? null,
   });
+  const [snap, setSnap] = useState(true);
+  const [snapStep, setSnapStep] = useState(() => Math.max(1, project.tile.width || 12));
 
   // Refs mirror zoom/pan so the non-passive wheel handler reads the latest
   // values without re-subscribing (avoids stale-closure bugs).
@@ -782,8 +842,22 @@ export const DeckCanvas = memo(function DeckCanvas({
     setPan({ x: panX2, y: panY2 });
   }, []);
 
+  // Real fit-to-container: scale the (fixed-width) svg down so the whole drawing
+  // fits the viewport, and reset pan. Defined after `width`/`height` below via a
+  // size ref so it can read the current svg dimensions without re-creating.
+  const sizeRef = useRef({ width: 0, height: 0 });
   const fitView = useCallback(() => {
-    setZoom(1);
+    const el = viewportRef.current;
+    const { width: w, height: h } = sizeRef.current;
+    if (!el || !w || !h) {
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const availW = el.clientWidth - 32;
+    const availH = el.clientHeight - 32;
+    const z = Math.max(ZOOM_MIN, Math.min(1, availW / w, availH / h));
+    setZoom(z);
     setPan({ x: 0, y: 0 });
   }, []);
 
@@ -933,6 +1007,29 @@ export const DeckCanvas = memo(function DeckCanvas({
 
   const { toScreen, scale, margin, bbox, width, height } = layout;
 
+  // Keep the svg size in a ref for fitView; auto-fit on mount and whenever the
+  // number of shape rectangles changes (e.g. after "+ Add rectangle") so newly
+  // placed geometry is always within the visible (un-clipped) area.
+  useEffect(() => {
+    sizeRef.current = { width, height };
+  }, [width, height]);
+  const prevRectCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    const n = project.rects.length;
+    if (prevRectCountRef.current === null || prevRectCountRef.current !== n) {
+      prevRectCountRef.current = n;
+      fitView();
+    }
+  }, [project.rects.length, width, height, fitView]);
+
+  // Keep the current world<->screen transform in a ref so window-level drag
+  // handlers (registered once per drag) always read fresh values.
+  const xformRef = useRef({ scale, margin, minX: bbox.minX, minY: bbox.minY });
+  useEffect(() => {
+    xformRef.current = { scale, margin, minX: bbox.minX, minY: bbox.minY };
+  }, [scale, margin, bbox.minX, bbox.minY]);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
   // Convert a pointer event to world (inch) coordinates within the SVG.
   const eventToWorld = (e: { clientX: number; clientY: number; currentTarget: SVGElement }): Pt | null => {
     const svg = e.currentTarget.ownerSVGElement ?? (e.currentTarget as unknown as SVGSVGElement);
@@ -945,9 +1042,99 @@ export const DeckCanvas = memo(function DeckCanvas({
     return [u.x / scale - margin + bbox.minX, u.y / scale - margin + bbox.minY];
   };
 
+  // Client(px) -> world(inch) using the live SVG ref + transform ref. Stable
+  // across renders so it can be used inside window event listeners.
+  const clientToWorld = useCallback((clientX: number, clientY: number): Pt | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const u = pt.matrixTransform(ctm.inverse());
+    const { scale: sc, margin: mg, minX, minY } = xformRef.current;
+    return [u.x / sc - mg + minX, u.y / sc - mg + minY];
+  }, []);
+
   const deckPath = useMemo(() => multiPolyToPath(computed.deck, toScreen), [computed.deck, toScreen]);
 
   const fmt = makeFmt(unit);
+
+  // --- Interactive shape editing (drag-move / resize rectangles) ---
+  const rects = project.rects;
+  const shapeDragRef = useRef<
+    null | { mode: HandleId | 'move'; rectId: string; orig: RectOp; startWorld: Pt }
+  >(null);
+  const rectRafRef = useRef<number | null>(null);
+  const rectPendingRef = useRef<{ id: string; patch: Partial<RectOp> } | null>(null);
+  const [draftRect, setDraftRect] = useState<RectOp | null>(null);
+  const snapRef = useRef(snap);
+  const snapStepRef = useRef(snapStep);
+  useEffect(() => {
+    snapRef.current = snap;
+  }, [snap]);
+  useEffect(() => {
+    snapStepRef.current = snapStep;
+  }, [snapStep]);
+
+  const flushRectUpdate = useCallback(() => {
+    rectRafRef.current = null;
+    const p = rectPendingRef.current;
+    if (p) {
+      rectPendingRef.current = null;
+      onUpdateRect?.(p.id, p.patch);
+    }
+  }, [onUpdateRect]);
+
+  const scheduleRectUpdate = useCallback(
+    (id: string, patch: Partial<RectOp>) => {
+      rectPendingRef.current = { id, patch };
+      if (rectRafRef.current == null) {
+        rectRafRef.current = requestAnimationFrame(flushRectUpdate);
+      }
+    },
+    [flushRectUpdate],
+  );
+
+  // Begin a rect drag. Move/up are handled at the WINDOW level (not via element
+  // pointer-capture) so dragging small handles/rectangles keeps tracking even
+  // when the cursor leaves the element.
+  const beginRectDrag = useCallback(
+    (e: ReactPointerEvent<SVGElement>, rectId: string, mode: HandleId | 'move') => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      const w = clientToWorld(e.clientX, e.clientY);
+      const orig = rects.find((r) => r.id === rectId);
+      if (!w || !orig) return;
+      onSelectRect?.(rectId);
+      shapeDragRef.current = { mode, rectId, orig: { ...orig }, startWorld: w };
+      setDraftRect({ ...orig });
+
+      const onMove = (ev: PointerEvent) => {
+        const d = shapeDragRef.current;
+        if (!d) return;
+        const wp = clientToWorld(ev.clientX, ev.clientY);
+        if (!wp) return;
+        const dx = wp[0] - d.startWorld[0];
+        const dy = wp[1] - d.startWorld[1];
+        const snapOn = snapRef.current && !ev.altKey;
+        const next = applyRectDrag(d.orig, d.mode, dx, dy, snapOn ? snapStepRef.current : 0);
+        setDraftRect({ ...d.orig, ...next });
+        scheduleRectUpdate(d.rectId, next);
+      };
+      const onUp = () => {
+        flushRectUpdate();
+        shapeDragRef.current = null;
+        setDraftRect(null);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
+    [rects, onSelectRect, clientToWorld, scheduleRectUpdate, flushRectUpdate],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -1033,60 +1220,107 @@ export const DeckCanvas = memo(function DeckCanvas({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-        <span className="font-semibold text-slate-600">Click a side to apply:</span>
         <button
-          onClick={() => setBrush({ kind: 'border', borderTypeId: null })}
-          className={`rounded border px-2 py-0.5 ${
-            brush.kind === 'border' && brush.borderTypeId === null
-              ? 'border-sky-500 bg-sky-100 font-semibold text-sky-700'
-              : 'border-slate-300 text-slate-600'
-          }`}
-        >
-          None
-        </button>
-        {project.borderTypes.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setBrush({ kind: 'border', borderTypeId: t.id })}
-            className={`flex items-center gap-1 rounded border px-2 py-0.5 ${
-              brush.kind === 'border' && brush.borderTypeId === t.id
-                ? 'border-sky-500 bg-sky-100 font-semibold text-sky-700'
-                : 'border-slate-300 text-slate-600'
-            }`}
-          >
-            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: t.color }} />
-            {t.name}
-          </button>
-        ))}
-        <span className="mx-1 h-4 w-px bg-slate-300" />
-        <button
-          onClick={() => setBrush({ kind: 'cut' })}
-          title="Mark a side as a cut side: leftover/partial tiles are pushed here, keeping full tiles flush on the other sides (auto grid mode)."
+          onClick={() => onSetShapeEditMode?.(!shapeEditMode)}
+          title="Toggle direct editing of the deck's rectangles on the diagram"
           className={`flex items-center gap-1 rounded border px-2 py-0.5 ${
-            brush.kind === 'cut'
-              ? 'border-pink-500 bg-pink-100 font-semibold text-pink-700'
+            shapeEditMode
+              ? 'border-amber-500 bg-amber-100 font-semibold text-amber-700'
               : 'border-slate-300 text-slate-600'
           }`}
         >
-          <span style={{ color: CUT_SIDE_COLOR }}>{'\u2702'}</span> Cut side
+          {'\u270e'} Edit shape
         </button>
-        {(project.postTypes ?? []).length > 0 && <span className="mx-1 h-4 w-px bg-slate-300" />}
-        {(project.postTypes ?? []).map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setBrush({ kind: 'post', postTypeId: t.id })}
-            title={`Place ${t.name} posts: click a point on any edge.`}
-            className={`flex items-center gap-1 rounded border px-2 py-0.5 ${
-              brush.kind === 'post' && brush.postTypeId === t.id
-                ? 'border-violet-500 bg-violet-100 font-semibold text-violet-700'
-                : 'border-slate-300 text-slate-600'
-            }`}
-          >
-            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: t.color }} />
-            {t.name}
-          </button>
-        ))}
-        <span className="text-slate-400">then click any side on the diagram.</span>
+        <span className="mx-1 h-4 w-px bg-slate-300" />
+        {shapeEditMode ? (
+          <>
+            <button
+              onClick={() => onAddRect?.()}
+              className="rounded bg-sky-600 px-2 py-0.5 font-medium text-white hover:bg-sky-700"
+            >
+              + Add rectangle
+            </button>
+            <label className="flex items-center gap-1 text-slate-600">
+              <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />
+              Snap
+            </label>
+            <label className="flex items-center gap-1 text-slate-500">
+              step
+              <input
+                type="number"
+                min={0.25}
+                step={0.25}
+                value={roundDisplay(fromInches(snapStep, unit), 3)}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (!Number.isNaN(v) && v > 0) setSnapStep(toInches(v, unit));
+                }}
+                className="w-16 rounded border border-slate-300 px-1 py-0.5"
+              />
+              {UNIT_LABELS[unit]}
+            </label>
+            <span className="text-slate-400">
+              Drag a rectangle to move; drag a handle to resize. Hold Alt to bypass snap.
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="font-semibold text-slate-600">Click a side to apply:</span>
+            <button
+              onClick={() => setBrush({ kind: 'border', borderTypeId: null })}
+              className={`rounded border px-2 py-0.5 ${
+                brush.kind === 'border' && brush.borderTypeId === null
+                  ? 'border-sky-500 bg-sky-100 font-semibold text-sky-700'
+                  : 'border-slate-300 text-slate-600'
+              }`}
+            >
+              None
+            </button>
+            {project.borderTypes.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setBrush({ kind: 'border', borderTypeId: t.id })}
+                className={`flex items-center gap-1 rounded border px-2 py-0.5 ${
+                  brush.kind === 'border' && brush.borderTypeId === t.id
+                    ? 'border-sky-500 bg-sky-100 font-semibold text-sky-700'
+                    : 'border-slate-300 text-slate-600'
+                }`}
+              >
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: t.color }} />
+                {t.name}
+              </button>
+            ))}
+            <span className="mx-1 h-4 w-px bg-slate-300" />
+            <button
+              onClick={() => setBrush({ kind: 'cut' })}
+              title="Mark a side as a cut side: leftover/partial tiles are pushed here, keeping full tiles flush on the other sides (auto grid mode)."
+              className={`flex items-center gap-1 rounded border px-2 py-0.5 ${
+                brush.kind === 'cut'
+                  ? 'border-pink-500 bg-pink-100 font-semibold text-pink-700'
+                  : 'border-slate-300 text-slate-600'
+              }`}
+            >
+              <span style={{ color: CUT_SIDE_COLOR }}>{'\u2702'}</span> Cut side
+            </button>
+            {(project.postTypes ?? []).length > 0 && <span className="mx-1 h-4 w-px bg-slate-300" />}
+            {(project.postTypes ?? []).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setBrush({ kind: 'post', postTypeId: t.id })}
+                title={`Place ${t.name} posts: click a point on any edge.`}
+                className={`flex items-center gap-1 rounded border px-2 py-0.5 ${
+                  brush.kind === 'post' && brush.postTypeId === t.id
+                    ? 'border-violet-500 bg-violet-100 font-semibold text-violet-700'
+                    : 'border-slate-300 text-slate-600'
+                }`}
+              >
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: t.color }} />
+                {t.name}
+              </button>
+            ))}
+            <span className="text-slate-400">then click any side on the diagram.</span>
+          </>
+        )}
       </div>
 
       <div
@@ -1100,6 +1334,7 @@ export const DeckCanvas = memo(function DeckCanvas({
       >
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
           <svg
+            ref={svgRef}
             width={width}
             height={height}
             viewBox={`0 0 ${width} ${height}`}
@@ -1227,10 +1462,11 @@ export const DeckCanvas = memo(function DeckCanvas({
                   stroke="transparent"
                   strokeWidth={16}
                   strokeLinecap="round"
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={() => onHover?.(side.id)}
-                  onMouseLeave={() => onHover?.(null)}
+                  style={{ cursor: shapeEditMode ? 'default' : 'pointer', pointerEvents: shapeEditMode ? 'none' : 'stroke' }}
+                  onMouseEnter={() => !shapeEditMode && onHover?.(side.id)}
+                  onMouseLeave={() => !shapeEditMode && onHover?.(null)}
                   onClick={(e) => {
+                    if (shapeEditMode) return;
                     if (brush.kind === 'cut') return onToggleCutSide?.(side.id);
                     if (brush.kind === 'border') return onAssignSide?.(side.id, brush.borderTypeId);
                     const w = eventToWorld(e);
@@ -1262,8 +1498,23 @@ export const DeckCanvas = memo(function DeckCanvas({
             posts={computed.posts.shapes}
             toScreen={toScreen}
             unit={unit}
-            onRemovePost={onRemovePost}
+            onRemovePost={shapeEditMode ? undefined : onRemovePost}
           />
+
+          {/* Interactive rectangle editing overlay (top-most) */}
+          {shapeEditMode && (
+            <ShapeEditLayer
+              rects={rects}
+              draftRect={draftRect}
+              selectedRectId={selectedRectId}
+              toScreen={toScreen}
+              width={width}
+              height={height}
+              unit={unit}
+              onBackgroundClick={() => onSelectRect?.(null)}
+              onRectPointerDown={beginRectDrag}
+            />
+          )}
         </svg>
         </div>
       </div>
@@ -1278,6 +1529,109 @@ function projectOntoSide(side: Side, world: Pt): number {
   const uy = (side.b[1] - side.a[1]) / len;
   const pos = (world[0] - side.a[0]) * ux + (world[1] - side.a[1]) * uy;
   return Math.max(0, Math.min(len, pos));
+}
+
+const ADD_STROKE = '#0284c7';
+const SUB_STROKE = '#dc2626';
+
+// Interactive overlay for editing the deck's defining rectangles. Each rect can
+// be dragged (move) or resized via its 8 handles. Drawn top-most in edit mode.
+function ShapeEditLayer({
+  rects,
+  draftRect,
+  selectedRectId,
+  toScreen,
+  width,
+  height,
+  unit,
+  onBackgroundClick,
+  onRectPointerDown,
+}: {
+  rects: RectOp[];
+  draftRect: RectOp | null;
+  selectedRectId: string | null;
+  toScreen: ToScreen;
+  width: number;
+  height: number;
+  unit: Unit;
+  onBackgroundClick: () => void;
+  onRectPointerDown: (e: ReactPointerEvent<SVGElement>, id: string, mode: HandleId | 'move') => void;
+}) {
+  return (
+    <g>
+      {/* Background: click empty space to deselect */}
+      <rect
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+        fill="transparent"
+        onClick={onBackgroundClick}
+      />
+      {rects.map((base) => {
+        const r = draftRect && draftRect.id === base.id ? draftRect : base;
+        const selected = selectedRectId === r.id;
+        const tl = toScreen([r.x, r.y]);
+        const br = toScreen([r.x + r.w, r.y + r.h]);
+        const sx = tl[0];
+        const sy = tl[1];
+        const sw = br[0] - tl[0];
+        const sh = br[1] - tl[1];
+        const isSub = r.op === 'subtract';
+        const stroke = selected ? '#f59e0b' : isSub ? SUB_STROKE : ADD_STROKE;
+        return (
+          <g key={`edit-${r.id}`}>
+            <rect
+              x={sx}
+              y={sy}
+              width={sw}
+              height={sh}
+              fill={isSub ? '#ef4444' : '#0ea5e9'}
+              fillOpacity={0.1}
+              stroke={stroke}
+              strokeWidth={selected ? 2 : 1.5}
+              strokeDasharray={isSub ? '6 4' : undefined}
+              style={{ cursor: 'move' }}
+              onPointerDown={(e) => onRectPointerDown(e, r.id, 'move')}
+            />
+            {/* Live size label */}
+            <text
+              x={sx + sw / 2}
+              y={sy + sh / 2}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize={11}
+              fontWeight={600}
+              fill={selected ? '#b45309' : '#334155'}
+              style={{ pointerEvents: 'none' }}
+            >
+              {`${roundDisplay(fromInches(r.w, unit), 2)} \u00d7 ${roundDisplay(fromInches(r.h, unit), 2)} ${UNIT_LABELS[unit]}`}
+            </text>
+            {selected &&
+              RESIZE_HANDLES.map((hdl) => {
+                const hx = sx + hdl.fx * sw;
+                const hy = sy + hdl.fy * sh;
+                const s = 8;
+                return (
+                  <rect
+                    key={hdl.id}
+                    x={hx - s / 2}
+                    y={hy - s / 2}
+                    width={s}
+                    height={s}
+                    fill="white"
+                    stroke="#f59e0b"
+                    strokeWidth={1.5}
+                    style={{ cursor: hdl.cursor }}
+                    onPointerDown={(e) => onRectPointerDown(e, r.id, hdl.id)}
+                  />
+                );
+              })}
+          </g>
+        );
+      })}
+    </g>
+  );
 }
 
 function Toggle({

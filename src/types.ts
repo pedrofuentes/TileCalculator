@@ -45,6 +45,12 @@ export interface PostType {
   /** Footprint depth pointing inward from the edge (inches). */
   depth: number;
   color: string;
+  /**
+   * Default inward setback (inches) for posts of this type, measured from the
+   * edge/border line to the post's outer face. Individual posts may override
+   * this via `Post.margin`. Defaults to 0 (flush).
+   */
+  margin?: number;
 }
 
 export interface Post {
@@ -56,7 +62,8 @@ export interface Post {
   pos: number;
   /**
    * Inward setback (inches) from the edge/border line to the post's outer face.
-   * 0 (default) means the post sits flush against the edge.
+   * Overrides the post type's default setback when set. When omitted, the
+   * post type's `margin` (else 0 = flush) is used.
    */
   margin?: number;
 }
