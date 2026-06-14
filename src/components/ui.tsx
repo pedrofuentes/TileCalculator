@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Unit } from '../types';
 import { fromInches, roundDisplay, toInches, UNIT_LABELS } from '../units';
 
@@ -61,10 +61,15 @@ export function LengthInput({
   const display = () => String(roundDisplay(fromInches(valueInches, unit), 4));
   const [draft, setDraft] = useState(display);
 
-  useEffect(() => {
+  // Resync the draft when the external value/unit changes, without an effect.
+  // (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+  const [prevValue, setPrevValue] = useState(valueInches);
+  const [prevUnit, setPrevUnit] = useState(unit);
+  if (valueInches !== prevValue || unit !== prevUnit) {
+    setPrevValue(valueInches);
+    setPrevUnit(unit);
     setDraft(display());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [valueInches, unit]);
+  }
 
   const commit = (raw: string) => {
     const parsed = parseFloat(raw);
@@ -110,7 +115,11 @@ export function NumberBox({
   min?: number;
 }) {
   const [draft, setDraft] = useState(String(value));
-  useEffect(() => setDraft(String(value)), [value]);
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
+    setDraft(String(value));
+  }
   return (
     <input
       type="number"

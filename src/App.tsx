@@ -76,7 +76,7 @@ export default function App() {
   );
 
   const updatePost = useCallback(
-    (id: string, patch: Partial<(typeof project.posts)[number]>) =>
+    (id: string, patch: Partial<Project['posts'][number]>) =>
       setProject((prev) => ({
         ...prev,
         posts: (prev.posts ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)),

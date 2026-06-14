@@ -954,13 +954,13 @@ export const DeckCanvas = memo(function DeckCanvas({
   }, [project.sideAssignments]);
 
   const borderTypeMap = useMemo(() => {
-    const m = new Map<string, (typeof project.borderTypes)[number]>();
+    const m = new Map<string, Project['borderTypes'][number]>();
     for (const t of project.borderTypes) m.set(t.id, t);
     return m;
   }, [project.borderTypes]);
 
   const postTypeMap = useMemo(() => {
-    const m = new Map<string, (typeof project.postTypes)[number]>();
+    const m = new Map<string, Project['postTypes'][number]>();
     for (const t of project.postTypes ?? []) m.set(t.id, t);
     return m;
   }, [project.postTypes]);
