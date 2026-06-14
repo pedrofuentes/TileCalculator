@@ -3,6 +3,7 @@ import type { ReactElement, MouseEvent as ReactMouseEvent, PointerEvent as React
 import type { Computed } from '../compute';
 import type { Project, RectOp, Unit } from '../types';
 import type { MultiPoly, Pt } from '../geometry/polygon';
+import { cutNotch } from '../geometry/polygon';
 import type { Side } from '../geometry/sides';
 import { cellOrientation } from '../geometry/pattern';
 import { formatDimension, fromInches, roundDisplay, toInches, UNIT_LABELS } from '../units';
@@ -144,6 +145,7 @@ const TileLayer = memo(function TileLayer({
       const covered = multiPolyToPath(cell.covered, toScreen);
       const cw = cell.cutBBox.maxX - cell.cutBBox.minX;
       const ch = cell.cutBBox.maxY - cell.cutBBox.minY;
+      const notch = cell.rectangular ? null : cutNotch(cell.covered, cell.cutBBox);
       return (
         <g key={key}>
           {/* original tile footprint (shows offcut) */}
@@ -159,7 +161,11 @@ const TileLayer = memo(function TileLayer({
           />
           <path d={covered} fill={CUT_FILL} stroke={CUT_STROKE} strokeWidth={1} fillRule="evenodd">
             <title>{`Cut tile \u2192 piece ${fmt(cw)} \u00d7 ${fmt(ch)}${
-              cell.rectangular ? '' : ' (L-cut)'
+              cell.rectangular
+                ? ''
+                : notch
+                  ? ` (L-cut, notch ${fmt(notch.w)} \u00d7 ${fmt(notch.h)})`
+                  : ' (L-cut)'
             }`}</title>
           </path>
         </g>

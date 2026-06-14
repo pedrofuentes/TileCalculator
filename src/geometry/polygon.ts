@@ -104,3 +104,69 @@ export function rectRing(x: number, y: number, w: number, h: number): Ring {
     [x, y],
   ];
 }
+
+/**
+ * For an axis-aligned L-shaped cut piece (a tile clipped at a reentrant deck
+ * corner), return the dimensions of the rectangular corner notch that was sawn
+ * out. Returns `null` when the piece is not a clean single-notch L (e.g. it is
+ * rectangular, has multiple notches, or the geometry fails validation) so the
+ * caller can fall back to a plain label without risk of showing a wrong notch.
+ *
+ * `covered` is the kept material; `bbox` is its bounding box (the full extent of
+ * the piece). The notch is the one bbox corner that is missing: its sides run
+ * from that corner to the single reflex (interior) vertex of the L outline.
+ */
+export function cutNotch(covered: MultiPoly, bbox: BBox): { w: number; h: number } | null {
+  const { minX, minY, maxX, maxY } = bbox;
+  const bw = maxX - minX;
+  const bh = maxY - minY;
+  if (bw <= 0 || bh <= 0) return null;
+
+  const EPS = Math.min(bw, bh) * 1e-3;
+  const TOL = bw * bh * 1e-3;
+
+  // The notch corner is the bbox corner whose interior is NOT covered. A clean
+  // single-notch L has exactly one such corner.
+  const corners: Pt[] = [
+    [minX, minY],
+    [maxX, minY],
+    [maxX, maxY],
+    [minX, maxY],
+  ];
+  let notchCorner: Pt | null = null;
+  for (const [cx, cy] of corners) {
+    const ix = cx + (cx === minX ? EPS : -EPS);
+    const iy = cy + (cy === minY ? EPS : -EPS);
+    if (!pointInMultiPoly([ix, iy], covered)) {
+      if (notchCorner) return null; // more than one uncovered corner
+      notchCorner = [cx, cy];
+    }
+  }
+  if (!notchCorner) return null;
+
+  // The reflex vertex is the lone outline vertex strictly interior to the bbox
+  // on both axes.
+  let reflex: Pt | null = null;
+  for (const poly of covered) {
+    for (const ring of poly) {
+      for (const [x, y] of ring) {
+        if (x > minX + EPS && x < maxX - EPS && y > minY + EPS && y < maxY - EPS) {
+          if (reflex && (Math.abs(reflex[0] - x) > EPS || Math.abs(reflex[1] - y) > EPS)) {
+            return null; // more than one distinct interior vertex
+          }
+          reflex = [x, y];
+        }
+      }
+    }
+  }
+  if (!reflex) return null;
+
+  const w = Math.abs(notchCorner[0] - reflex[0]);
+  const h = Math.abs(notchCorner[1] - reflex[1]);
+  if (w <= EPS || h <= EPS) return null;
+
+  // Validate: removing the notch from the bbox must reproduce the covered area.
+  if (Math.abs(bw * bh - w * h - multiPolyArea(covered)) > TOL) return null;
+
+  return { w, h };
+}

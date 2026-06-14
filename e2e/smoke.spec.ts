@@ -67,3 +67,16 @@ test('unit switch and add-rectangle do not crash', async ({ page }) => {
   await expect(page.getByText('Something went wrong')).toHaveCount(0);
   expect(errors, `console/page errors:\n${errors.join('\n')}`).toEqual([]);
 });
+
+test('L-cut cut-list rows show their corner notch dimensions', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  // The cut list groups finished pieces. Any L-cut row must spell out the
+  // rectangular corner notch that is sawn out, so it can't be mistaken for a
+  // whole tile. (Guarded: only asserts when the current project yields L-cuts.)
+  const lcut = page.locator('td', { hasText: '(L-cut)' });
+  if (await lcut.count()) {
+    await expect(lcut.first()).toContainText('cut notch');
+  }
+});

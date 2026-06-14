@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import type { Computed } from '../compute';
 import type { Unit } from '../types';
 import { formatArea, formatLength, fromInches, roundDisplay, UNIT_LABELS } from '../units';
+import { cutNotch } from '../geometry/polygon';
 import { Section } from '../components/ui';
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -18,15 +19,20 @@ export const ResultsPanel = memo(function ResultsPanel({ computed, unit }: { com
   const { tiles, borders } = computed;
 
   const cutList = useMemo(() => {
-    const groups = new Map<string, { w: number; h: number; count: number; lcut: boolean }>();
+    const groups = new Map<
+      string,
+      { w: number; h: number; count: number; lcut: boolean; notch: { w: number; h: number } | null }
+    >();
     for (const c of computed.grid.cells) {
       if (c.kind !== 'cut') continue;
       const w = c.cutBBox.maxX - c.cutBBox.minX;
       const h = c.cutBBox.maxY - c.cutBBox.minY;
-      const key = `${roundDisplay(w, 2)}x${roundDisplay(h, 2)}x${c.rectangular ? 'r' : 'l'}`;
+      const notch = c.rectangular ? null : cutNotch(c.covered, c.cutBBox);
+      const notchKey = notch ? `${roundDisplay(notch.w, 2)}x${roundDisplay(notch.h, 2)}` : '';
+      const key = `${roundDisplay(w, 2)}x${roundDisplay(h, 2)}x${c.rectangular ? 'r' : 'l'}x${notchKey}`;
       const g = groups.get(key);
       if (g) g.count++;
-      else groups.set(key, { w, h, count: 1, lcut: !c.rectangular });
+      else groups.set(key, { w, h, count: 1, lcut: !c.rectangular, notch });
     }
     return [...groups.values()].sort((a, b) => b.count - a.count);
   }, [computed.grid.cells]);
@@ -191,6 +197,12 @@ export const ResultsPanel = memo(function ResultsPanel({ computed, unit }: { com
                     <td className="py-1">
                       {roundDisplay(fromInches(c.w, unit), 2)} {'\u00d7'} {roundDisplay(fromInches(c.h, unit), 2)}{' '}
                       {UNIT_LABELS[unit]}
+                      {c.lcut && c.notch && (
+                        <span className="ml-1 text-xs text-slate-500">
+                          {'\u00b7'} cut notch {roundDisplay(fromInches(c.notch.w, unit), 2)} {'\u00d7'}{' '}
+                          {roundDisplay(fromInches(c.notch.h, unit), 2)} {UNIT_LABELS[unit]}
+                        </span>
+                      )}
                       {c.lcut && <span className="ml-1 text-xs text-orange-500">(L-cut)</span>}
                     </td>
                     <td className="text-right">{c.count}</td>
@@ -199,8 +211,10 @@ export const ResultsPanel = memo(function ResultsPanel({ computed, unit }: { com
               </tbody>
             </table>
             <p className="text-xs text-slate-400">
-              (L-cut) = an L-shaped piece (both dimensions reduced, e.g. an inside corner) &mdash;
-              not pairable, needs its own tile.
+              (L-cut) = an L-shaped piece: a full-size tile with a rectangular corner notch sawn
+              out (the &ldquo;cut notch&rdquo; size) to wrap an inside corner of the deck. The
+              W {'\u00d7'} H is the tile&rsquo;s overall extent, not a whole tile. Not pairable,
+              needs its own tile.
             </p>
           </>
         )}

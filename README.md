@@ -40,7 +40,9 @@ preconfigured for a NewTechWood UltraShield QuickDeck L-shaped deck.
   offcut footprint, border strips, corner markers, post footprints, and dimension labels.
   Supports **zoom / pan** (drag to pan, Ctrl/Cmd + wheel to zoom) and a **Fit** button; the
   view auto-fits the drawing to the canvas.
-- **Cut list**: grouped piece sizes (with an L-cut flag) and quantities.
+- **Cut list**: grouped finished-piece sizes (W × H bounding box) and quantities. **L-cut**
+  rows are full-extent tiles with a rectangular corner notch sawn out to wrap an inside corner;
+  the notch size is shown (e.g. `12 × 12 in · cut notch 4 × 3 (L-cut)`).
 - **Dimension basis**: choose whether the deck dimensions represent the *tile field* (trim
   extends outward) or the *total footprint* (trim insets the tile field).
 - **Save / Load** projects in the browser (localStorage) and **Import / Export** a deck as a
