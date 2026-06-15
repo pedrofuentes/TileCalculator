@@ -9,7 +9,7 @@ Generic by design (configurable tile size, border types, post types, and units).
 a simple **8 × 8 ft square** (project **"Tile1"**); a NewTechWood UltraShield QuickDeck L-shaped
 layout ships as a built-in sample (`sampleProject()`).
 
-**Live demo:** https://pedrofuentes.github.io/TileCalculator/
+**Live demo:** https://pedrofuent.es/TileCalculator/
 
 > **Docs:** this README is the user-facing overview. See [`AGENTS.md`](./AGENTS.md) for
 > contributor/AI-agent guidance and [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the
@@ -87,7 +87,7 @@ boolean geometry.
 ## Deployment (GitHub Pages)
 
 The app is a static SPA deployed to **GitHub Pages** at
-https://pedrofuentes.github.io/TileCalculator/.
+https://pedrofuent.es/TileCalculator/.
 
 - `.github/workflows/deploy.yml` builds on every push to `main` and publishes `dist/` via the
   official Pages actions (`configure-pages` → `upload-pages-artifact` → `deploy-pages`).
