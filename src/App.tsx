@@ -15,6 +15,7 @@ import {
   UnitSelector,
 } from './components/ConfigPanels';
 import { ProjectBar } from './components/ProjectBar';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import { DeckCanvas } from './render/DeckCanvas';
 import { ResultsPanel } from './render/ResultsPanel';
 
@@ -271,6 +272,7 @@ export default function App() {
           Source
         </a>
       </footer>
+      <UpdatePrompt />
     </div>
   );
 }
